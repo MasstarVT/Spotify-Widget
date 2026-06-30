@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Candy Now Playing</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --candy-bg:     #130018;
+    --candy-pink:   #ff3d8a;
+    --candy-purple: #c47bff;
+    --candy-mint:   #3dffcc;
+    --candy-yellow: #ffd93d;
+    --candy-text:   #ffe8f8;
+    --candy-artist: #c8a0e8;
+    --candy-label:  #ff85c2;
+    --candy-title-size:  17px;   /* track title font size  */
+    --candy-artist-size: 13px;   /* artist name font size  */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Widget shell ──────────────────────────────────────────────── */
+  .candy-widget {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    width: 350px;
+    background:
+      radial-gradient(ellipse 80% 60% at 0% 0%,   rgba(196,123,255,0.10) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 80% at 100% 100%, rgba(255,61,138,0.08) 0%, transparent 60%),
+      var(--candy-bg);
+    border: 2px solid transparent;
+    border-radius: 18px;
+    padding: 14px 16px;
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+    transition: opacity 0.55s cubic-bezier(0.22,1,0.36,1), transform 0.55s cubic-bezier(0.22,1,0.36,1);
+    user-select: none;
+    pointer-events: none;
+    animation: candy-border 5s linear infinite;
+  }
+
+  .candy-widget.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* cycling candy-color border + glow */
+  @keyframes candy-border {
+    0%   { border-color: var(--candy-pink);   box-shadow: 0 0 14px rgba(255,61,138,0.55),  0 0 36px rgba(255,61,138,0.15),  inset 0 0 28px rgba(0,0,0,0.5); }
+    33%  { border-color: var(--candy-purple); box-shadow: 0 0 14px rgba(196,123,255,0.55), 0 0 36px rgba(196,123,255,0.15), inset 0 0 28px rgba(0,0,0,0.5); }
+    66%  { border-color: var(--candy-mint);   box-shadow: 0 0 14px rgba(61,255,204,0.50),  0 0 36px rgba(61,255,204,0.12),  inset 0 0 28px rgba(0,0,0,0.5); }
+    100% { border-color: var(--candy-pink);   box-shadow: 0 0 14px rgba(255,61,138,0.55),  0 0 36px rgba(255,61,138,0.15),  inset 0 0 28px rgba(0,0,0,0.5); }
+  }
+
+  /* ─── Header ────────────────────────────────────────────────────── */
+  .candy-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .candy-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    color: var(--candy-label);
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255,133,194,0.6);
+  }
+
+  /* rainbow EQ bars */
+  .candy-eq {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 16px;
+  }
+
+  .candy-eq-bar {
+    width: 5px;
+    border-radius: 3px 3px 1px 1px;
+    animation: candy-eq var(--bar-dur) ease-in-out var(--bar-delay) infinite alternate;
+  }
+
+  .candy-eq-bar:nth-child(1) { background: var(--candy-pink);   --bar-dur: 0.52s; --bar-delay: 0.00s; }
+  .candy-eq-bar:nth-child(2) { background: var(--candy-yellow); --bar-dur: 0.74s; --bar-delay: 0.13s; }
+  .candy-eq-bar:nth-child(3) { background: var(--candy-mint);   --bar-dur: 0.43s; --bar-delay: 0.07s; }
+  .candy-eq-bar:nth-child(4) { background: var(--candy-purple); --bar-dur: 0.88s; --bar-delay: 0.20s; }
+  .candy-eq-bar:nth-child(5) { background: var(--candy-pink);   --bar-dur: 0.61s; --bar-delay: 0.10s; }
+
+  @keyframes candy-eq {
+    from { height: 3px;  opacity: 0.6; }
+    to   { height: 16px; opacity: 1;   }
+  }
+
+  /* ─── Content row ───────────────────────────────────────────────── */
+  .candy-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* ─── Album art ─────────────────────────────────────────────────── */
+  .candy-art {
+    width: 70px;
+    height: 70px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    border: 2px solid rgba(255,133,194,0.4);
+    box-shadow:
+      0 0 10px rgba(255,61,138,0.3),
+      inset 0 0 10px rgba(0,0,0,0.4);
+    position: relative;
+    background: #1e0030;
+    overflow: hidden;
+  }
+
+  .candy-art-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: rgba(255,133,194,0.15);
+  }
+
+  .candy-art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.45s ease;
+    z-index: 1;
+  }
+
+  .candy-art-img.loaded { opacity: 1; }
+
+  /* ─── Track info ─────────────────────────────────────────────────── */
+  .candy-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .candy-title-wrap {
+    width: 100%;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+  }
+
+  .candy-title {
+    font-family: 'Nunito', sans-serif;
+    font-size: var(--candy-title-size);
+    font-weight: 800;
+    color: var(--candy-text);
+    white-space: nowrap;
+    display: inline-block;
+    letter-spacing: 0.2px;
+    text-shadow: 0 0 14px rgba(255,133,194,0.35);
+    transition: opacity 0.3s ease;
+  }
+
+  .candy-title.is-scrolling {
+    animation: candy-marquee var(--scroll-dur, 9s) linear infinite;
+  }
+
+  @keyframes candy-marquee {
+    0%,  18% { transform: translateX(0); }
+    68%, 84% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .candy-artist {
+    font-family: 'Nunito', sans-serif;
+    font-size: var(--candy-artist-size);
+    font-weight: 600;
+    color: var(--candy-artist);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.3px;
+    transition: opacity 0.3s ease;
+  }
+
+  /* ─── Track change fade ─────────────────────────────────────────── */
+  .is-changing .candy-title,
+  .is-changing .candy-artist { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="candy-widget" id="candyWidget">
+
+  <div class="candy-header">
+    <span class="candy-label">✦ NOW PLAYING</span>
+    <div class="candy-eq">
+      <div class="candy-eq-bar"></div>
+      <div class="candy-eq-bar"></div>
+      <div class="candy-eq-bar"></div>
+      <div class="candy-eq-bar"></div>
+      <div class="candy-eq-bar"></div>
+    </div>
+  </div>
+
+  <div class="candy-content">
+    <div class="candy-art">
+      <div class="candy-art-placeholder">&#9835;</div>
+      <img class="candy-art-img" id="artImg" alt="">
+    </div>
+    <div class="candy-info">
+      <div class="candy-title-wrap" id="titleWrap">
+        <span class="candy-title" id="trackTitle">&#8212;</span>
+      </div>
+      <div class="candy-artist" id="trackArtist">&nbsp;</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var widget   = document.getElementById('candyWidget');
+  var titleEl  = document.getElementById('trackTitle');
+  var artistEl = document.getElementById('trackArtist');
+  var wrapEl   = document.getElementById('titleWrap');
+  var artImg   = document.getElementById('artImg');
+
+  var lastRaw        = null;
+  var visible        = false;
+  var changing       = false;
+  var pending        = null;
+  var current        = { title: '', artist: '' };
+  var demoInterval   = null;
+  var currentBlobUrl = null;
+
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var wrapW     = wrapEl.offsetWidth;
+        var titleW    = titleEl.scrollWidth;
+        var fadeStart = Math.floor(wrapW * 0.82);
+        if (titleW > fadeStart) {
+          var px  = -(titleW - fadeStart + 16);
+          var dur = Math.max(7, Math.abs(px) / 30).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    applyScroll();
+  }
+
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      widget.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        widget.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 320);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { widget.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+        };
+        artImg.onerror = function () { URL.revokeObjectURL(newUrl); };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  var demos = [
+    { title: 'Sugar Rush',          artist: 'AKB48'          },
+    { title: 'Digital Love',        artist: 'Daft Punk'      },
+    { title: 'Lollipop',            artist: 'MIKA'           },
+    { title: 'Candy',               artist: 'Robyn'          },
+    { title: 'Running Up That Hill', artist: 'Kate Bush'     },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>

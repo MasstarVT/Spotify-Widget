@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moss Cryptid Now Playing</title>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mc-bg:       #040a04;
+    --mc-glow:     #5dff78;
+    --mc-glow-dim: rgba(93, 255, 120, 0.18);
+    --mc-text:     #cff0a4;
+    --mc-artist:   #6e9e50;
+    --mc-label:    #8ec866;
+    --mc-border:   rgba(93, 255, 120, 0.55);
+    --mc-title-size:  18px;   /* track title font size  */
+    --mc-artist-size: 13px;   /* artist name font size  */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Widget shell ──────────────────────────────────────────────── */
+  .mc-widget {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    width: 350px;
+    background:
+      radial-gradient(ellipse 70% 50% at 10% 0%,   rgba(93,255,120,0.05) 0%, transparent 100%),
+      radial-gradient(ellipse 50% 70% at 90% 100%,  rgba(93,255,120,0.03) 0%, transparent 100%),
+      var(--mc-bg);
+    border: 1px solid var(--mc-border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    user-select: none;
+    pointer-events: none;
+    animation: mc-breathe 4s ease-in-out infinite;
+  }
+
+  .mc-widget.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* breathing glow on the border */
+  @keyframes mc-breathe {
+    0%, 100% {
+      box-shadow:
+        0 0 10px rgba(93,255,120,0.35),
+        0 0 28px rgba(93,255,120,0.12),
+        inset 0 0 24px rgba(0,0,0,0.55);
+    }
+    50% {
+      box-shadow:
+        0 0 5px  rgba(93,255,120,0.18),
+        0 0 14px rgba(93,255,120,0.06),
+        inset 0 0 24px rgba(0,0,0,0.55);
+    }
+  }
+
+  /* drifting mist overlay */
+  .mc-mist {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    background: radial-gradient(ellipse 55% 60% at 25% 50%,
+      rgba(93,255,120,0.055) 0%, transparent 70%);
+    animation: mc-mist 9s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @keyframes mc-mist {
+    from { transform: translateX(-18px); opacity: 0.6; }
+    to   { transform: translateX(22px);  opacity: 1;   }
+  }
+
+  /* ─── Header ────────────────────────────────────────────────────── */
+  .mc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(93,255,120,0.22);
+    position: relative;
+    z-index: 1;
+  }
+
+  .mc-label {
+    font-family: 'Special Elite', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--mc-label);
+    line-height: 1;
+    text-shadow: 0 0 8px rgba(93,255,120,0.5);
+  }
+
+  /* EQ bars — gradient glow, organic timing */
+  .mc-eq {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 16px;
+  }
+
+  .mc-eq-bar {
+    width: 4px;
+    border-radius: 1px 1px 0 0;
+    background: linear-gradient(to top, var(--mc-glow) 0%, rgba(93,255,120,0.15) 100%);
+    box-shadow: 0 0 4px rgba(93,255,120,0.4);
+    animation: mc-eq var(--bar-dur) ease-in-out var(--bar-delay) infinite alternate;
+  }
+
+  .mc-eq-bar:nth-child(1) { --bar-dur: 0.55s; --bar-delay: 0.00s; }
+  .mc-eq-bar:nth-child(2) { --bar-dur: 0.78s; --bar-delay: 0.14s; }
+  .mc-eq-bar:nth-child(3) { --bar-dur: 0.44s; --bar-delay: 0.07s; }
+  .mc-eq-bar:nth-child(4) { --bar-dur: 0.91s; --bar-delay: 0.22s; }
+  .mc-eq-bar:nth-child(5) { --bar-dur: 0.63s; --bar-delay: 0.11s; }
+
+  @keyframes mc-eq {
+    from { height: 4px;  opacity: 0.5; }
+    to   { height: 16px; opacity: 1;   }
+  }
+
+  /* ─── Content row ───────────────────────────────────────────────── */
+  .mc-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─── Album art ─────────────────────────────────────────────────── */
+  .mc-art {
+    width: 68px;
+    height: 68px;
+    flex-shrink: 0;
+    border: 1px solid rgba(93,255,120,0.4);
+    border-radius: 3px;
+    box-shadow:
+      0 0 8px rgba(93,255,120,0.25),
+      inset 0 0 8px rgba(0,0,0,0.6);
+    position: relative;
+    background: #050f05;
+    overflow: hidden;
+  }
+
+  /* subtle green tint over art */
+  .mc-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(93,255,120,0.07);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .mc-art-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: rgba(93,255,120,0.12);
+  }
+
+  .mc-art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 1;
+  }
+
+  .mc-art-img.loaded { opacity: 1; }
+
+  /* ─── Track info ─────────────────────────────────────────────────── */
+  .mc-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .mc-title-wrap {
+    width: 100%;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+  }
+
+  .mc-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: var(--mc-title-size);
+    font-weight: 700;
+    color: var(--mc-text);
+    white-space: nowrap;
+    display: inline-block;
+    letter-spacing: 0.4px;
+    text-shadow: 0 0 12px rgba(93,255,120,0.3);
+    transition: opacity 0.35s ease;
+  }
+
+  .mc-title.is-scrolling {
+    animation: mc-marquee var(--scroll-dur, 9s) linear infinite;
+  }
+
+  @keyframes mc-marquee {
+    0%,  18% { transform: translateX(0); }
+    68%, 84% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .mc-artist {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: var(--mc-artist-size);
+    font-weight: 500;
+    color: var(--mc-artist);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.6px;
+    transition: opacity 0.35s ease;
+  }
+
+  /* ─── Track change fade ─────────────────────────────────────────── */
+  .is-changing .mc-title,
+  .is-changing .mc-artist { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="mc-widget" id="mcWidget">
+  <div class="mc-mist"></div>
+
+  <div class="mc-header">
+    <span class="mc-label">◈ NOW PLAYING</span>
+    <div class="mc-eq">
+      <div class="mc-eq-bar"></div>
+      <div class="mc-eq-bar"></div>
+      <div class="mc-eq-bar"></div>
+      <div class="mc-eq-bar"></div>
+      <div class="mc-eq-bar"></div>
+    </div>
+  </div>
+
+  <div class="mc-content">
+    <div class="mc-art">
+      <div class="mc-art-placeholder">&#9835;</div>
+      <img class="mc-art-img" id="artImg" alt="">
+    </div>
+    <div class="mc-info">
+      <div class="mc-title-wrap" id="titleWrap">
+        <span class="mc-title" id="trackTitle">&#8212;</span>
+      </div>
+      <div class="mc-artist" id="trackArtist">&nbsp;</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var widget   = document.getElementById('mcWidget');
+  var titleEl  = document.getElementById('trackTitle');
+  var artistEl = document.getElementById('trackArtist');
+  var wrapEl   = document.getElementById('titleWrap');
+  var artImg   = document.getElementById('artImg');
+
+  var lastRaw        = null;
+  var visible        = false;
+  var changing       = false;
+  var pending        = null;
+  var current        = { title: '', artist: '' };
+  var demoInterval   = null;
+  var currentBlobUrl = null;
+
+  /* ── Scrolling marquee ───────────────────────────────────────────── */
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var wrapW     = wrapEl.offsetWidth;
+        var titleW    = titleEl.scrollWidth;
+        var fadeStart = Math.floor(wrapW * 0.82);
+        if (titleW > fadeStart) {
+          var px  = -(titleW - fadeStart + 16);
+          var dur = Math.max(7, Math.abs(px) / 30).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  /* ── Apply track to DOM ──────────────────────────────────────────── */
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    applyScroll();
+  }
+
+  /* ── Show track with fade transition ────────────────────────────── */
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      widget.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        widget.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 360);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { widget.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  /* ── Artwork ─────────────────────────────────────────────────────── */
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+        };
+        artImg.onerror = function () { URL.revokeObjectURL(newUrl); };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Parse Snip.txt ──────────────────────────────────────────────── */
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  /* ── Poll Snip/Snip.txt ──────────────────────────────────────────── */
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Demo fallback ───────────────────────────────────────────────── */
+  var demos = [
+    { title: 'Something in the Woods',  artist: 'Forest Signal'    },
+    { title: 'Digital Love',            artist: 'Daft Punk'        },
+    { title: 'Running Up That Hill',    artist: 'Kate Bush'        },
+    { title: 'Teardrop',                artist: 'Massive Attack'   },
+    { title: 'Karma Police',            artist: 'Radiohead'        },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>

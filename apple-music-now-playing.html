@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Apple Music Now Playing</title>
+<style>
+  /* ╔══════════════════════════════════════════════════════════════════╗
+     ║              WIDGET COLORS & SIZES — edit these to customize      ║
+     ╚══════════════════════════════════════════════════════════════════╝ */
+  :root {
+    --title-color:   #ffffff;              /* track title color         */
+    --artist-color:  rgba(255,255,255,0.5); /* artist name fallback color (auto-tinted from art when available) */
+    --title-size:    15px;                 /* track title font size     */
+    --artist-size:   12px;                 /* artist name font size     */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* ─── Widget ────────────────────────────────────────────────────────── */
+  .am-widget {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    width: 310px;
+    border-radius: 18px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+    transition:
+      opacity   0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 1.2s ease,
+      box-shadow 1.2s ease;
+    background-color: rgba(20, 20, 22, 0.92);
+    box-shadow:
+      0 0 0 0.5px rgba(255,255,255,0.10),
+      0 8px 32px rgba(0,0,0,0.55),
+      0 2px 8px rgba(0,0,0,0.3);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    user-select: none;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .am-widget.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* colored glow layer behind content */
+  .am-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 1.2s ease, background 1.2s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── Album art ─────────────────────────────────────────────────────── */
+  .am-art {
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    position: relative;
+    background: #1c1c1e;
+    overflow: hidden;
+    box-shadow:
+      0 4px 16px rgba(0,0,0,0.45),
+      0 1px 4px rgba(0,0,0,0.3);
+    z-index: 1;
+  }
+
+  .am-art-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: rgba(255,255,255,0.12);
+    background: linear-gradient(135deg, #2c2c2e 0%, #1c1c1e 100%);
+  }
+
+  .am-art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 1;
+  }
+
+  .am-art-img.loaded { opacity: 1; }
+
+  /* ─── Track info ────────────────────────────────────────────────────── */
+  .am-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 1;
+  }
+
+  .am-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.38);
+    margin-bottom: 3px;
+  }
+
+  /* scrolling title */
+  .am-title-wrap {
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to right, #000 78%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 78%, transparent 100%);
+  }
+
+  .am-title {
+    font-size: var(--title-size);
+    font-weight: 700;
+    color: var(--title-color);
+    white-space: nowrap;
+    display: inline-block;
+    letter-spacing: -0.3px;
+    transition: opacity 0.3s ease;
+  }
+
+  .am-title.is-scrolling {
+    animation: marquee var(--scroll-dur, 8s) linear infinite;
+  }
+
+  @keyframes marquee {
+    0%,  20% { transform: translateX(0); }
+    70%, 85% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .am-artist {
+    font-size: var(--artist-size);
+    font-weight: 500;
+    color: var(--artist-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.3s ease, color 1.2s ease;
+  }
+
+  /* Apple Music tints the artist name with the art color */
+  .am-artist.tinted { color: var(--tint, rgba(255,255,255,0.5)); }
+
+  /* ─── Animated bars ────────────────────────────────────────────────── */
+  .am-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+
+  .am-bar {
+    width: 3px;
+    border-radius: 1.5px;
+    background: rgba(255,255,255,0.5);
+    animation: bar-bounce 0.9s ease-in-out infinite alternate;
+  }
+
+  .am-bar:nth-child(1) { animation-duration: 0.75s; animation-delay: 0s;    height: 10px; }
+  .am-bar:nth-child(2) { animation-duration: 0.90s; animation-delay: 0.15s; height: 14px; }
+  .am-bar:nth-child(3) { animation-duration: 0.65s; animation-delay: 0.05s; height: 8px;  }
+
+  @keyframes bar-bounce {
+    from { transform: scaleY(0.25); opacity: 0.45; }
+    to   { transform: scaleY(1);    opacity: 1; }
+  }
+
+  /* ─── Track change fade ─────────────────────────────────────────────── */
+  .is-changing .am-title,
+  .is-changing .am-artist { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="am-widget" id="amWidget">
+  <div class="am-glow" id="amGlow"></div>
+
+  <div class="am-art">
+    <div class="am-art-placeholder">♫</div>
+    <img class="am-art-img" id="artImg" alt="">
+  </div>
+
+  <div class="am-bars">
+    <div class="am-bar"></div>
+    <div class="am-bar"></div>
+    <div class="am-bar"></div>
+  </div>
+
+  <div class="am-info">
+    <div class="am-label">Now Playing</div>
+    <div class="am-title-wrap" id="titleWrap">
+      <span class="am-title" id="trackTitle">—</span>
+    </div>
+    <div class="am-artist" id="trackArtist">&nbsp;</div>
+  </div>
+
+
+</div>
+
+<!-- offscreen canvas for color sampling -->
+<canvas id="colorCanvas" width="16" height="16" style="display:none"></canvas>
+
+<script>
+(function () {
+  'use strict';
+
+  var widget    = document.getElementById('amWidget');
+  var glow      = document.getElementById('amGlow');
+  var titleEl   = document.getElementById('trackTitle');
+  var artistEl  = document.getElementById('trackArtist');
+  var wrapEl    = document.getElementById('titleWrap');
+  var artImg    = document.getElementById('artImg');
+  var canvas    = document.getElementById('colorCanvas');
+  var ctx       = canvas.getContext('2d');
+
+  var lastRaw      = null;
+  var visible      = false;
+  var changing     = false;
+  var pending      = null;
+  var current      = { title: '', artist: '' };
+  var demoInterval = null;
+  var currentBlobUrl = null;
+
+  /* ── Color extraction ─────────────────────────────────────────────── */
+  function extractColor(img) {
+    try {
+      ctx.drawImage(img, 0, 0, 16, 16);
+      var data = ctx.getImageData(0, 0, 16, 16).data;
+      var r = 0, g = 0, b = 0;
+      for (var i = 0; i < data.length; i += 4) {
+        r += data[i]; g += data[i + 1]; b += data[i + 2];
+      }
+      var n = data.length / 4;
+      return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyColor(color) {
+    if (!color) return;
+    var dr = Math.round(color.r * 0.28);
+    var dg = Math.round(color.g * 0.28);
+    var db = Math.round(color.b * 0.28);
+    var lr = Math.round(color.r * 0.55);
+    var lg = Math.round(color.g * 0.55);
+    var lb = Math.round(color.b * 0.55);
+
+    widget.style.backgroundColor =
+      'rgba(' + dr + ',' + dg + ',' + db + ', 0.94)';
+    widget.style.boxShadow =
+      '0 0 0 0.5px rgba(255,255,255,0.10),' +
+      '0 8px 32px rgba(' + dr + ',' + dg + ',' + db + ', 0.7),' +
+      '0 2px 8px rgba(0,0,0,0.3)';
+
+    glow.style.background =
+      'radial-gradient(ellipse at 20% 50%, rgba(' + lr + ',' + lg + ',' + lb + ', 0.18) 0%, transparent 70%)';
+    glow.style.opacity = '1';
+
+    /* tint artist name */
+    var tr = Math.min(255, Math.round(color.r * 1.1 + 80));
+    var tg = Math.min(255, Math.round(color.g * 1.1 + 80));
+    var tb = Math.min(255, Math.round(color.b * 1.1 + 80));
+    artistEl.style.color = 'rgba(' + tr + ',' + tg + ',' + tb + ', 0.85)';
+  }
+
+  /* ── Marquee ──────────────────────────────────────────────────────── */
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var overflow = titleEl.scrollWidth - wrapEl.offsetWidth;
+        if (overflow > 4) {
+          var px  = -(overflow + 24);
+          var dur = Math.max(6, Math.abs(px) / 32).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  /* ── Apply track ──────────────────────────────────────────────────── */
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    applyScroll();
+  }
+
+  /* ── Show with crossfade ──────────────────────────────────────────── */
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      widget.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        widget.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 320);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { widget.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  /* ── Artwork ──────────────────────────────────────────────────────── */
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+          var color = extractColor(artImg);
+          applyColor(color);
+        };
+        artImg.onerror = function () {
+          URL.revokeObjectURL(newUrl);
+        };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Poll Snip.txt ────────────────────────────────────────────────── */
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Demo fallback ────────────────────────────────────────────────── */
+  var demos = [
+    { title: 'Digital Love',             artist: 'Daft Punk'       },
+    { title: 'The Way You Make Me Feel', artist: 'Michael Jackson' },
+    { title: 'Karma Police',             artist: 'Radiohead'       },
+    { title: 'Teardrop',                 artist: 'Massive Attack'  },
+    { title: 'Running Up That Hill',     artist: 'Kate Bush'       },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>

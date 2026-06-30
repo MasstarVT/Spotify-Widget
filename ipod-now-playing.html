@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iPod Now Playing</title>
+<style>
+  /* ╔══════════════════════════════════════════════════════════════════╗
+     ║              WIDGET COLORS & SIZES — edit these to customize      ║
+     ╚══════════════════════════════════════════════════════════════════╝ */
+  :root {
+    --title-color:   #ffffff;                   /* track title color    */
+    --artist-color:  rgba(255,255,255,0.48);    /* artist name color    */
+    --title-size:    11px;                      /* track title font size */
+    --artist-size:   9px;                       /* artist name font size */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* ─── Widget shell ──────────────────────────────────────────────────── */
+  .ipod {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    width: 220px;
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+    transition:
+      opacity  0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .ipod.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* ─── Screen bezel ──────────────────────────────────────────────────── */
+  .ipod-screen {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.18),
+      0 0 0 3px rgba(0,0,0,0.6),
+      0 8px 28px rgba(0,0,0,0.55),
+      0 2px 6px rgba(0,0,0,0.3);
+    position: relative;
+  }
+
+  /* screen glare */
+  .ipod-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.09) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 10;
+    border-radius: 8px;
+  }
+
+  /* ─── Header bar ────────────────────────────────────────────────────── */
+  .screen-header {
+    background: linear-gradient(180deg, #5c5c5c 0%, #3c3c3c 100%);
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .screen-header-text {
+    font-size: 9px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.5px;
+    flex: 1;
+    text-align: center;
+  }
+
+  /* ─── Content row ───────────────────────────────────────────────────── */
+  .screen-content {
+    display: flex;
+    align-items: stretch;
+    background: #0a0a0a;
+  }
+
+  /* Album art */
+  .screen-art {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+    position: relative;
+    background: #111;
+    overflow: hidden;
+  }
+
+  .art-placeholder {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #1e1e1e 0%, #0a0a0a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    color: rgba(255,255,255,0.1);
+  }
+
+  .art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    z-index: 1;
+  }
+
+  .art-img.loaded { opacity: 1; }
+
+  /* Track info */
+  .screen-info {
+    flex: 1;
+    padding: 10px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  /* scrolling title */
+  .screen-title-wrap {
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to right, #000 72%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 72%, transparent 100%);
+  }
+
+  .screen-title {
+    font-size: var(--title-size);
+    font-weight: 700;
+    color: var(--title-color);
+    white-space: nowrap;
+    display: inline-block;
+    transition: opacity 0.3s ease;
+  }
+
+  .screen-title.is-scrolling {
+    animation: marquee var(--scroll-dur, 8s) linear infinite;
+  }
+
+  @keyframes marquee {
+    0%,  18% { transform: translateX(0); }
+    68%, 82% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .screen-artist {
+    font-size: var(--artist-size);
+    color: var(--artist-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.3s ease;
+  }
+
+  /* ─── Bottom rule ───────────────────────────────────────────────────── */
+  .screen-sep {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 0 8px;
+  }
+
+  /* ─── Track change fade ─────────────────────────────────────────────── */
+  .is-changing .screen-title,
+  .is-changing .screen-artist { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="ipod" id="ipod">
+  <div class="ipod-screen">
+
+    <div class="screen-header">
+      <span class="screen-header-text">Now Playing</span>
+    </div>
+
+    <div class="screen-content">
+      <div class="screen-art">
+        <div class="art-placeholder">♫</div>
+        <img class="art-img" id="artImg" alt="">
+      </div>
+      <div class="screen-info">
+        <div class="screen-title-wrap" id="titleWrap">
+          <span class="screen-title" id="trackTitle">—</span>
+        </div>
+        <div class="screen-artist" id="trackArtist">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="screen-sep"></div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var ipod      = document.getElementById('ipod');
+  var titleEl   = document.getElementById('trackTitle');
+  var artistEl  = document.getElementById('trackArtist');
+  var wrapEl    = document.getElementById('titleWrap');
+  var artImg    = document.getElementById('artImg');
+
+  var lastRaw      = null;
+  var visible      = false;
+  var changing     = false;
+  var pending      = null;
+  var current      = { title: '', artist: '' };
+  var demoInterval = null;
+
+  /* ── Marquee ──────────────────────────────────────────────────────── */
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+
+    /* double rAF ensures the browser has laid out the new text */
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var overflow = titleEl.scrollWidth - wrapEl.offsetWidth;
+        if (overflow > 4) {
+          var px  = -(overflow + 20);
+          var dur = Math.max(6, Math.abs(px) / 28).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  /* ── Apply track ──────────────────────────────────────────────────── */
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    applyScroll();
+  }
+
+  /* ── Show with crossfade ──────────────────────────────────────────── */
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      ipod.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        ipod.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 320);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { ipod.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  /* ── Artwork ──────────────────────────────────────────────────────── */
+  var currentBlobUrl = null;
+
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var url = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = url;
+        };
+        artImg.onerror = function () { URL.revokeObjectURL(url); };
+        artImg.src = url;
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Poll Snip.txt ────────────────────────────────────────────────── */
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Demo fallback ────────────────────────────────────────────────── */
+  var demos = [
+    { title: 'Digital Love',             artist: 'Daft Punk'       },
+    { title: 'The Way You Make Me Feel', artist: 'Michael Jackson' },
+    { title: 'Karma Police',             artist: 'Radiohead'       },
+    { title: 'Teardrop',                 artist: 'Massive Attack'  },
+    { title: 'Running Up That Hill',     artist: 'Kate Bush'       },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>

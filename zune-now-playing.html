@@ -14,6 +14,8 @@
     --label-color:  #FF6A33;                /* "now playing" label text        */
     --title-color:  #FFFFFF;                /* track title text                */
     --artist-color: rgba(255, 255, 255, 0.85); /* artist name text             */
+    --title-size:   38px;                      /* track title font size        */
+    --artist-size:  15px;                      /* artist name font size        */
   }
 
   *, *::before, *::after {
@@ -220,7 +222,7 @@
   }
 
   .zune-title {
-    font-size: 38px;
+    font-size: var(--title-size);
     font-weight: 700;
     color: var(--title-color);
     line-height: 1.05;
@@ -244,7 +246,7 @@
   }
 
   .zune-artist {
-    font-size: 15px;
+    font-size: var(--artist-size);
     font-weight: 400;
     color: var(--artist-color);
     letter-spacing: 0.4px;
@@ -280,8 +282,6 @@
 
     <div class="zune-art">
       <div class="zune-art-fill">
-        <div class="zune-vinyl"></div>
-        <div class="zune-art-note">♫</div>
       </div>
       <img class="zune-art-img" id="artImg" alt="">
     </div>

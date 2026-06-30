@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Minimal Rect Now Playing</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ╔══════════════════════════════════════════════════════════════════╗
+     ║              WIDGET COLORS & SIZES — edit these to customize      ║
+     ╚══════════════════════════════════════════════════════════════════╝ */
+  :root {
+    --title-color:   #ffffff;              /* track title color         */
+    --artist-color:  rgba(255,255,255,0.6); /* artist name color        */
+    --title-size:    15px;                 /* track title font size     */
+    --artist-size:   12px;                 /* artist name font size     */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .widget {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 300px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .widget.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Album art */
+  .art {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    border-radius: 3px;
+  }
+
+  .art-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.1);
+  }
+
+  .art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  .art-img.loaded { opacity: 1; }
+
+  /* Text block */
+  .info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .title-wrap {
+    width: 100%;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, #000 80%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 80%, transparent 100%);
+  }
+
+  .title {
+    font-family: 'Outfit', sans-serif;
+    font-size: var(--title-size);
+    font-weight: 700;
+    color: var(--title-color);
+    white-space: nowrap;
+    display: inline-block;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85), 0 2px 20px rgba(0, 0, 0, 0.5);
+    transition: opacity 0.3s ease;
+    line-height: 1.3;
+  }
+
+  .title.is-scrolling {
+    animation: marquee var(--scroll-dur, 9s) linear infinite;
+  }
+
+  @keyframes marquee {
+    0%,  18% { transform: translateX(0); }
+    68%, 84% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .artist {
+    font-family: 'Outfit', sans-serif;
+    font-size: var(--artist-size);
+    font-weight: 400;
+    color: var(--artist-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+    transition: opacity 0.3s ease;
+    line-height: 1.3;
+  }
+
+  .is-changing .title,
+  .is-changing .artist { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="widget" id="widget">
+  <div class="art">
+    <div class="art-placeholder">&#9835;</div>
+    <img class="art-img" id="artImg" alt="">
+  </div>
+  <div class="info">
+    <div class="title-wrap" id="titleWrap">
+      <span class="title" id="trackTitle">&#8212;</span>
+    </div>
+    <div class="artist" id="trackArtist">&nbsp;</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var widget   = document.getElementById('widget');
+  var titleEl  = document.getElementById('trackTitle');
+  var artistEl = document.getElementById('trackArtist');
+  var wrapEl   = document.getElementById('titleWrap');
+  var artImg   = document.getElementById('artImg');
+
+  var lastRaw        = null;
+  var visible        = false;
+  var changing       = false;
+  var pending        = null;
+  var current        = { title: '', artist: '' };
+  var demoInterval   = null;
+  var currentBlobUrl = null;
+
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var wrapW     = wrapEl.offsetWidth;
+        var titleW    = titleEl.scrollWidth;
+        var fadeStart = Math.floor(wrapW * 0.80);
+        if (titleW > fadeStart) {
+          var px  = -(titleW - fadeStart + 16);
+          var dur = Math.max(7, Math.abs(px) / 28).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    applyScroll();
+  }
+
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      widget.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        widget.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 300);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { widget.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+        };
+        artImg.onerror = function () { URL.revokeObjectURL(newUrl); };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  var demos = [
+    { title: 'Digital Love',           artist: 'Daft Punk'      },
+    { title: 'Running Up That Hill',   artist: 'Kate Bush'      },
+    { title: 'Teardrop',               artist: 'Massive Attack' },
+    { title: 'Karma Police',           artist: 'Radiohead'      },
+    { title: 'God Only Knows',         artist: 'The Beach Boys' },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>

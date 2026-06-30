@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Space Now Playing</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sp-bg:       #030810;
+    --sp-glow:     #00d4ff;
+    --sp-glow-dim: rgba(0, 212, 255, 0.14);
+    --sp-text:     #e8f4ff;
+    --sp-artist:   #6aabcc;
+    --sp-label:    #00d4ff;
+    --sp-gold:     #ffc947;
+    --sp-border:   rgba(0, 212, 255, 0.38);
+    --sp-title-size:  13px;    /* track title font size  */
+    --sp-artist-size: 11.5px;  /* artist name font size  */
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Widget shell ──────────────────────────────────────────────── */
+  .sp-widget {
+    position: fixed;
+    bottom: 44px;
+    left: 44px;
+    width: 360px;
+    background: var(--sp-bg);
+    border: 1px solid var(--sp-border);
+    border-radius: 2px;
+    padding: 14px 16px;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+    user-select: none;
+    pointer-events: none;
+    overflow: hidden;
+    animation: sp-pulse 5s ease-in-out infinite;
+  }
+
+  .sp-widget.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @keyframes sp-pulse {
+    0%, 100% {
+      box-shadow:
+        0 0 14px rgba(0, 212, 255, 0.28),
+        0 0 50px rgba(0, 212, 255, 0.08),
+        inset 0 0 35px rgba(0, 0, 0, 0.75);
+    }
+    50% {
+      box-shadow:
+        0 0 6px  rgba(0, 212, 255, 0.12),
+        0 0 24px rgba(0, 212, 255, 0.04),
+        inset 0 0 35px rgba(0, 0, 0, 0.75);
+    }
+  }
+
+  /* ─── Starfield canvas ──────────────────────────────────────────── */
+  .sp-stars {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  /* ─── Nebula overlay ────────────────────────────────────────────── */
+  .sp-nebula {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 90% 65% at 10% 15%,  rgba(28,  8, 90, 0.4) 0%, transparent 70%),
+      radial-gradient(ellipse 65% 90% at 88% 82%,  rgba(  4, 28, 96, 0.38) 0%, transparent 68%),
+      radial-gradient(ellipse 45% 45% at 52% 50%,  rgba(  0, 16, 48, 0.25) 0%, transparent 100%);
+    animation: sp-nebula-drift 14s ease-in-out infinite alternate;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  @keyframes sp-nebula-drift {
+    from { transform: translate(-8px, -4px) scale(1.03); opacity: 0.65; }
+    to   { transform: translate( 8px,  4px) scale(0.97); opacity: 1;    }
+  }
+
+  /* ─── Scanning line ─────────────────────────────────────────────── */
+  .sp-scan {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent 0%, rgba(0, 212, 255, 0.45) 40%, rgba(0, 212, 255, 0.45) 60%, transparent 100%);
+    animation: sp-scan 7s linear infinite;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  @keyframes sp-scan {
+    0%   { top: -1px; opacity: 0; }
+    4%   { opacity: 1; }
+    96%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  /* ─── Corner crosshairs ─────────────────────────────────────────── */
+  .sp-corner {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+
+  .sp-corner--tl { top: 6px;    left: 6px;    border-top:    1px solid var(--sp-glow); border-left:   1px solid var(--sp-glow); }
+  .sp-corner--tr { top: 6px;    right: 6px;   border-top:    1px solid var(--sp-glow); border-right:  1px solid var(--sp-glow); }
+  .sp-corner--bl { bottom: 6px; left: 6px;    border-bottom: 1px solid var(--sp-glow); border-left:   1px solid var(--sp-glow); }
+  .sp-corner--br { bottom: 6px; right: 6px;   border-bottom: 1px solid var(--sp-glow); border-right:  1px solid var(--sp-glow); }
+
+  /* ─── Header ────────────────────────────────────────────────────── */
+  .sp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.18);
+    position: relative;
+    z-index: 4;
+  }
+
+  .sp-signal {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sp-signal-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sp-glow);
+    box-shadow: 0 0 6px var(--sp-glow), 0 0 14px rgba(0, 212, 255, 0.5);
+    animation: sp-dot-pulse 2.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes sp-dot-pulse {
+    0%, 100% { transform: scale(1);   opacity: 1;   }
+    50%       { transform: scale(0.6); opacity: 0.35; }
+  }
+
+  .sp-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--sp-label);
+    text-shadow: 0 0 10px rgba(0, 212, 255, 0.55);
+    line-height: 1;
+  }
+
+  /* ─── EQ bars ───────────────────────────────────────────────────── */
+  .sp-eq {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 15px;
+  }
+
+  .sp-eq-bar {
+    width: 3px;
+    border-radius: 1px 1px 0 0;
+    background: linear-gradient(to top, var(--sp-glow) 0%, rgba(0, 212, 255, 0.18) 100%);
+    box-shadow: 0 0 4px rgba(0, 212, 255, 0.45);
+    animation: sp-eq var(--bar-dur) ease-in-out var(--bar-delay) infinite alternate;
+  }
+
+  .sp-eq-bar:nth-child(1) { --bar-dur: 0.52s; --bar-delay: 0.00s; }
+  .sp-eq-bar:nth-child(2) { --bar-dur: 0.74s; --bar-delay: 0.16s; }
+  .sp-eq-bar:nth-child(3) { --bar-dur: 0.40s; --bar-delay: 0.08s; }
+  .sp-eq-bar:nth-child(4) { --bar-dur: 0.88s; --bar-delay: 0.24s; }
+  .sp-eq-bar:nth-child(5) { --bar-dur: 0.61s; --bar-delay: 0.12s; }
+  .sp-eq-bar:nth-child(6) { --bar-dur: 0.34s; --bar-delay: 0.04s; }
+
+  @keyframes sp-eq {
+    from { height: 3px;  opacity: 0.35; }
+    to   { height: 15px; opacity: 1;    }
+  }
+
+  /* ─── Content row ───────────────────────────────────────────────── */
+  .sp-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 4;
+  }
+
+  /* ─── Album art + orbit ring ────────────────────────────────────── */
+  .sp-art-wrap {
+    position: relative;
+    width: 70px;
+    height: 70px;
+    flex-shrink: 0;
+  }
+
+  .sp-orbit {
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 212, 255, 0.3);
+    animation: sp-orbit-spin 12s linear infinite;
+  }
+
+  .sp-orbit::before {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background: var(--sp-glow);
+    border-radius: 50%;
+    top: 50%;
+    right: -2.5px;
+    transform: translateY(-50%);
+    box-shadow: 0 0 8px var(--sp-glow), 0 0 16px rgba(0, 212, 255, 0.4);
+  }
+
+  @keyframes sp-orbit-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .sp-art {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(0, 212, 255, 0.32);
+    border-radius: 2px;
+    background: #05091a;
+    overflow: hidden;
+    box-shadow:
+      0 0 10px rgba(0, 212, 255, 0.18),
+      inset 0 0 14px rgba(0, 0, 0, 0.8);
+  }
+
+  .sp-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 212, 255, 0.05);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .sp-art-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: rgba(0, 212, 255, 0.14);
+    z-index: 1;
+  }
+
+  .sp-art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 1;
+  }
+
+  .sp-art-img.loaded { opacity: 1; }
+
+  /* ─── Track info ────────────────────────────────────────────────── */
+  .sp-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .sp-coords {
+    font-family: 'Orbitron', monospace;
+    font-size: 7px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    color: rgba(0, 212, 255, 0.38);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.35s ease;
+  }
+
+  .sp-title-wrap {
+    width: 100%;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, #000 78%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 78%, transparent 100%);
+  }
+
+  .sp-title {
+    font-family: 'Orbitron', monospace;
+    font-size: var(--sp-title-size);
+    font-weight: 700;
+    color: var(--sp-text);
+    white-space: nowrap;
+    display: inline-block;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 18px rgba(0, 212, 255, 0.35);
+    transition: opacity 0.35s ease;
+    line-height: 1.35;
+  }
+
+  .sp-title.is-scrolling {
+    animation: sp-marquee var(--scroll-dur, 9s) linear infinite;
+  }
+
+  @keyframes sp-marquee {
+    0%,  18% { transform: translateX(0); }
+    68%, 84% { transform: translateX(var(--scroll-px, -60px)); }
+    100%      { transform: translateX(0); }
+  }
+
+  .sp-artist {
+    font-family: 'Exo 2', sans-serif;
+    font-size: var(--sp-artist-size);
+    font-weight: 300;
+    font-style: italic;
+    color: var(--sp-artist);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    transition: opacity 0.35s ease;
+  }
+
+  /* ─── Track change fade ─────────────────────────────────────────── */
+  .is-changing .sp-title,
+  .is-changing .sp-artist,
+  .is-changing .sp-coords { opacity: 0; }
+</style>
+</head>
+<body>
+
+<div class="sp-widget" id="spWidget">
+  <canvas class="sp-stars" id="starCanvas"></canvas>
+  <div class="sp-nebula"></div>
+  <div class="sp-scan"></div>
+
+  <div class="sp-corner sp-corner--tl"></div>
+  <div class="sp-corner sp-corner--tr"></div>
+  <div class="sp-corner sp-corner--bl"></div>
+  <div class="sp-corner sp-corner--br"></div>
+
+  <div class="sp-header">
+    <div class="sp-signal">
+      <span class="sp-signal-dot"></span>
+      <span class="sp-label">SIGNAL LOCK</span>
+    </div>
+    <div class="sp-eq">
+      <div class="sp-eq-bar"></div>
+      <div class="sp-eq-bar"></div>
+      <div class="sp-eq-bar"></div>
+      <div class="sp-eq-bar"></div>
+      <div class="sp-eq-bar"></div>
+      <div class="sp-eq-bar"></div>
+    </div>
+  </div>
+
+  <div class="sp-content">
+    <div class="sp-art-wrap">
+      <div class="sp-orbit"></div>
+      <div class="sp-art">
+        <div class="sp-art-placeholder">&#10022;</div>
+        <img class="sp-art-img" id="artImg" alt="">
+      </div>
+    </div>
+    <div class="sp-info">
+      <div class="sp-coords" id="spCoords">RA 05h 34m &middot; DEC +22&deg; 00&prime;</div>
+      <div class="sp-title-wrap" id="titleWrap">
+        <span class="sp-title" id="trackTitle">&#8212;</span>
+      </div>
+      <div class="sp-artist" id="trackArtist">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Starfield ───────────────────────────────────────────────────── */
+  var canvas = document.getElementById('starCanvas');
+  var ctx    = canvas.getContext('2d');
+  var widget = document.getElementById('spWidget');
+  var stars  = [];
+
+  function initStars() {
+    canvas.width  = widget.offsetWidth;
+    canvas.height = widget.offsetHeight;
+    stars = [];
+    for (var i = 0; i < 90; i++) {
+      stars.push({
+        x:     Math.random() * canvas.width,
+        y:     Math.random() * canvas.height,
+        r:     Math.random() * 1.1 + 0.15,
+        base:  Math.random() * 0.55 + 0.08,
+        speed: Math.random() * 0.7 + 0.25,
+        phase: Math.random() * Math.PI * 2,
+        gold:  Math.random() > 0.82,
+      });
+    }
+  }
+
+  var t = 0;
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    t += 0.015;
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      var a = s.base + Math.sin(t * s.speed + s.phase) * (s.base * 0.75);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = s.gold
+        ? 'rgba(255, 201, 71, ' + a + ')'
+        : 'rgba(220, 240, 255, ' + a + ')';
+      ctx.fill();
+    }
+    requestAnimationFrame(drawStars);
+  }
+
+  initStars();
+  drawStars();
+
+  /* ── DOM refs ────────────────────────────────────────────────────── */
+  var titleEl  = document.getElementById('trackTitle');
+  var artistEl = document.getElementById('trackArtist');
+  var wrapEl   = document.getElementById('titleWrap');
+  var artImg   = document.getElementById('artImg');
+  var coordsEl = document.getElementById('spCoords');
+
+  var lastRaw        = null;
+  var visible        = false;
+  var changing       = false;
+  var pending        = null;
+  var current        = { title: '', artist: '' };
+  var demoInterval   = null;
+  var currentBlobUrl = null;
+  var coordIdx       = 0;
+
+  var coords = [
+    'RA 05h 34m · DEC +22° 00′',
+    'RA 17h 45m · DEC −29° 00′',
+    'RA 00h 42m · DEC +41° 16′',
+    'RA 12h 30m · DEC +12° 23′',
+    'RA 06h 45m · DEC −16° 42′',
+  ];
+
+  /* ── Marquee scroll ──────────────────────────────────────────────── */
+  function applyScroll() {
+    titleEl.classList.remove('is-scrolling');
+    titleEl.style.removeProperty('--scroll-px');
+    titleEl.style.removeProperty('--scroll-dur');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var wrapW     = wrapEl.offsetWidth;
+        var titleW    = titleEl.scrollWidth;
+        var fadeStart = Math.floor(wrapW * 0.78);
+        if (titleW > fadeStart) {
+          var px  = -(titleW - fadeStart + 16);
+          var dur = Math.max(7, Math.abs(px) / 28).toFixed(1) + 's';
+          titleEl.style.setProperty('--scroll-px',  px + 'px');
+          titleEl.style.setProperty('--scroll-dur', dur);
+          titleEl.classList.add('is-scrolling');
+        }
+      });
+    });
+  }
+
+  /* ── Apply track ─────────────────────────────────────────────────── */
+  function applyTrack(title, artist) {
+    current.title  = title;
+    current.artist = artist;
+    titleEl.textContent  = title;
+    artistEl.textContent = artist || ' ';
+    coordsEl.textContent = coords[coordIdx % coords.length];
+    coordIdx++;
+    applyScroll();
+  }
+
+  /* ── Show with fade ──────────────────────────────────────────────── */
+  function show(title, artist) {
+    if (title === current.title && artist === current.artist) return;
+    if (changing) { pending = { title: title, artist: artist }; return; }
+
+    if (current.title) {
+      changing = true;
+      pending  = null;
+      widget.classList.add('is-changing');
+      setTimeout(function () {
+        applyTrack(title, artist);
+        widget.classList.remove('is-changing');
+        changing = false;
+        if (pending) { var p = pending; pending = null; show(p.title, p.artist); }
+      }, 360);
+    } else {
+      applyTrack(title, artist);
+    }
+
+    if (!visible) {
+      setTimeout(function () { widget.classList.add('visible'); }, 80);
+      visible = true;
+    }
+  }
+
+  /* ── Artwork ─────────────────────────────────────────────────────── */
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+        };
+        artImg.onerror = function () { URL.revokeObjectURL(newUrl); };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Parse Snip.txt ──────────────────────────────────────────────── */
+  function parse(raw) {
+    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) return null;
+    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
+    var dash = lines[0].indexOf(' - ');
+    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
+    return { title: lines[0], artist: '' };
+  }
+
+  /* ── Poll Snip/Snip.txt ──────────────────────────────────────────── */
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+        var raw = xhr.responseText;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        var track = parse(raw);
+        if (track) { show(track.title, track.artist); updateArtwork(); }
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Demo fallback ───────────────────────────────────────────────── */
+  var demos = [
+    { title: 'STARMAN',             artist: 'DAVID BOWIE'   },
+    { title: 'SPACE ODDITY',        artist: 'DAVID BOWIE'   },
+    { title: 'INTERSTELLAR THEME',  artist: 'HANS ZIMMER'   },
+    { title: 'ACROSS THE UNIVERSE', artist: 'THE BEATLES'   },
+    { title: 'ECLIPSE',             artist: 'PINK FLOYD'    },
+  ];
+
+  poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
+  setTimeout(function () {
+    if (!visible) {
+      var i = 0;
+      show(demos[i].title, demos[i].artist);
+      demoInterval = setInterval(function () {
+        i = (i + 1) % demos.length;
+        show(demos[i].title, demos[i].artist);
+      }, 5000);
+    }
+  }, 3000);
+}());
+</script>
+
+</body>
+</html>
