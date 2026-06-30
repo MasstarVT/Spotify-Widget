@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zune Now Playing</title>
 <style>
+  /* ╔══════════════════════════════════════════════════════════════════╗
+     ║              WIDGET COLORS — edit these to customize             ║
+     ╚══════════════════════════════════════════════════════════════════╝ */
+  :root {
+    --accent:       #FF4500;                /* main accent (bar, glow, rule)   */
+    --accent-2:     #E60073;                /* gradient end / art fill tone    */
+    --label-color:  #FF6A33;                /* "now playing" label text        */
+    --title-color:  #FFFFFF;                /* track title text                */
+    --artist-color: rgba(255, 255, 255, 0.85); /* artist name text             */
+  }
+
   *, *::before, *::after {
     margin: 0;
     padding: 0;
@@ -46,18 +57,18 @@
   .zune-accent {
     width: 4px;
     border-radius: 3px 0 0 3px;
-    background: linear-gradient(180deg, #FF4500 0%, #E60073 100%);
+    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
     flex-shrink: 0;
     box-shadow:
-      0 0 8px  rgba(255, 69, 0, 0.95),
-      0 0 22px rgba(255, 69, 0, 0.55),
-      0 0 48px rgba(255, 69, 0, 0.20);
+      0 0 8px  color-mix(in srgb, var(--accent) 95%, transparent),
+      0 0 22px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 0 48px color-mix(in srgb, var(--accent) 20%, transparent);
     animation: accent-breathe 3.5s ease-in-out infinite;
   }
 
   @keyframes accent-breathe {
-    0%, 100% { opacity: 1;    box-shadow: 0 0 8px rgba(255,69,0,.95), 0 0 22px rgba(255,69,0,.55), 0 0 48px rgba(255,69,0,.20); }
-    50%       { opacity: 0.78; box-shadow: 0 0 5px rgba(255,69,0,.70), 0 0 14px rgba(255,69,0,.38), 0 0 30px rgba(255,69,0,.12); }
+    0%, 100% { opacity: 1;    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 95%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 48px color-mix(in srgb, var(--accent) 20%, transparent); }
+    50%       { opacity: 0.78; box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 38%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 12%, transparent); }
   }
 
   /* ─── Dark Panel ───────────────────────────────────────────────────── */
@@ -88,9 +99,9 @@
     height: 100%;
     background: linear-gradient(
       135deg,
-      #FF4500  0%,
-      #C8005A 42%,
-      #000000 100%
+      var(--accent)   0%,
+      var(--accent-2) 42%,
+      #000000        100%
     );
     position: relative;
     overflow: hidden;
@@ -193,10 +204,10 @@
     font-weight: 600;
     letter-spacing: 4px;
     text-transform: uppercase;
-    color: #FF6A33;
+    color: var(--label-color);
     line-height: 1;
     margin-bottom: 6px;
-    text-shadow: 0 0 10px rgba(255, 100, 50, 0.9);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--label-color) 90%, transparent);
   }
 
   /* scrollable title container */
@@ -211,15 +222,15 @@
   .zune-title {
     font-size: 38px;
     font-weight: 700;
-    color: #FFFFFF;
+    color: var(--title-color);
     line-height: 1.05;
     letter-spacing: -1.5px;
     white-space: nowrap;
     display: inline-block;
     padding-right: 80px;
     text-shadow:
-      0 0 28px rgba(255, 255, 255, 0.12),
-      0 0 56px rgba(255, 69, 0, 0.06);
+      0 0 28px color-mix(in srgb, var(--title-color) 12%, transparent),
+      0 0 56px color-mix(in srgb, var(--accent) 6%, transparent);
     transition: opacity 0.35s ease;
   }
 
@@ -235,7 +246,7 @@
   .zune-artist {
     font-size: 15px;
     font-weight: 400;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--artist-color);
     letter-spacing: 0.4px;
     white-space: nowrap;
     overflow: hidden;
@@ -256,7 +267,7 @@
     height: 1px;
     width: 100%;
     max-width: 420px;
-    background: linear-gradient(to right, rgba(255,69,0,0.3) 0%, transparent 100%);
+    background: linear-gradient(to right, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 100%);
     margin: 5px 0 3px 0;
   }
 </style>

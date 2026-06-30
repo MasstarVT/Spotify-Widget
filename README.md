@@ -83,12 +83,35 @@ If `Snip\Snip.txt` cannot be read, the widget automatically enters demo mode and
 
 ## Customization
 
-All styling is in the `<style>` block at the top of the HTML file.
+### Colors
+
+All colors are defined as CSS variables at the very top of the `<style>` block — no need to hunt through the file:
+
+```css
+:root {
+  --accent:       #FF4500;                   /* main accent (bar, glow, rule)  */
+  --accent-2:     #E60073;                   /* gradient end / art fill tone   */
+  --label-color:  #FF6A33;                   /* "now playing" label text       */
+  --title-color:  #FFFFFF;                   /* track title text               */
+  --artist-color: rgba(255, 255, 255, 0.85); /* artist name text               */
+}
+```
+
+| Variable | Controls |
+|---|---|
+| `--accent` | Left accent bar, its glow, and the divider rule |
+| `--accent-2` | Bottom of the accent bar gradient and the album art background |
+| `--label-color` | "now playing" label (glow updates automatically) |
+| `--title-color` | Large track title text |
+| `--artist-color` | Artist name below the title |
+
+Glow and shadow effects derive from these variables automatically — just change the hex values and everything updates.
+
+### Other Settings
 
 | What to change | What to edit |
 |---|---|
 | Widget position | `bottom` and `left` values in `.zune-widget` |
-| Accent color | `#FF4500` (orange) and `#E60073` (pink) throughout |
 | Title font size | `font-size` on `.zune-title` (default `38px`) |
 | Artist font size | `font-size` on `.zune-artist` (default `15px`) |
 | Scroll area width | `width` on `.zune-title-wrap` (default `420px`) |
