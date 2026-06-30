@@ -9,7 +9,6 @@ A Zune HD-inspired "Now Playing" overlay for OBS Studio. Displays the current so
 - [OBS Studio](https://obsproject.com/)
 - A music player companion app that writes to a text file, such as:
   - [Snip](https://github.com/dlrudie/Snip) (recommended)
-  - [NowPlaying](https://github.com/kimmokarlsson/NowPlaying)
   - Any tool that writes song info to a `.txt` file
 
 ---
