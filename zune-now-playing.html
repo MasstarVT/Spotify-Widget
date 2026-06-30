@@ -165,6 +165,21 @@
     line-height: 1;
   }
 
+  .zune-art-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 4;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .zune-art-img.loaded {
+    opacity: 1;
+  }
+
   /* ─── Track Info ───────────────────────────────────────────────────── */
   .zune-info {
     display: flex;
@@ -197,7 +212,6 @@
     font-size: 38px;
     font-weight: 700;
     color: #FFFFFF;
-    text-transform: lowercase;
     line-height: 1.05;
     letter-spacing: -1.5px;
     white-space: nowrap;
@@ -221,7 +235,6 @@
     font-size: 15px;
     font-weight: 300;
     color: rgba(255, 255, 255, 0.48);
-    text-transform: lowercase;
     letter-spacing: 0.4px;
     white-space: nowrap;
     overflow: hidden;
@@ -258,6 +271,7 @@
         <div class="zune-vinyl"></div>
         <div class="zune-art-note">♫</div>
       </div>
+      <img class="zune-art-img" id="artImg" alt="">
     </div>
 
     <div class="zune-info">
@@ -280,13 +294,14 @@
   const titleEl  = document.getElementById('trackTitle');
   const artistEl = document.getElementById('trackArtist');
   const wrapEl   = document.getElementById('titleWrap');
+  const artImg   = document.getElementById('artImg');
 
-  var lastRaw     = null;
-  var visible     = false;
-  var changing    = false;
-  var pending     = null;
-  var current     = { title: '', artist: '' };
-  var demoActive  = false;
+  var lastRaw      = null;
+  var visible      = false;
+  var changing     = false;
+  var pending      = null;
+  var current      = { title: '', artist: '' };
+  var demoInterval = null;
 
   /* ── Parse snip.txt ──────────────────────────────────────────────── */
   function parse(raw) {
@@ -358,24 +373,57 @@
     }
   }
 
-  /* ── Fetch snip.txt ──────────────────────────────────────────────── */
+  /* ── Fetch artwork via XHR blob (avoids file:// caching issues) ─── */
+  var currentBlobUrl = null;
+
+  function updateArtwork() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
+    xhr.responseType = 'blob';
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
+        var newUrl = URL.createObjectURL(xhr.response);
+        artImg.onload = function () {
+          artImg.classList.add('loaded');
+          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+          currentBlobUrl = newUrl;
+        };
+        artImg.onerror = function () {
+          URL.revokeObjectURL(newUrl);
+        };
+        artImg.src = newUrl;
+      }
+    };
+    xhr.send();
+  }
+
+  /* ── Fetch Snip/Snip.txt via XHR (works on file:// in OBS CEF) ──── */
   function poll() {
-    if (demoActive) return;
-    fetch('snip.txt?_=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('not ok');
-        return r.text();
-      })
-      .then(function (raw) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'Snip/Snip.txt', true);
+    xhr.overrideMimeType('text/plain; charset=utf-8');
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
+        if (demoInterval) {
+          clearInterval(demoInterval);
+          demoInterval = null;
+        }
+        var raw = xhr.responseText;
         if (raw === lastRaw) return;
         lastRaw = raw;
         var track = parse(raw);
-        if (track) show(track.title, track.artist);
-      })
-      .catch(function () { /* silent */ });
+        if (track) {
+          show(track.title, track.artist);
+          updateArtwork();
+        }
+      }
+    };
+    xhr.send();
   }
 
-  /* ── Demo fallback (used when snip.txt is absent) ───────────────── */
+  /* ── Demo fallback if file unreadable after 3 s ──────────────────── */
   var demos = [
     { title: 'digital love',             artist: 'daft punk'        },
     { title: 'the way you make me feel', artist: 'michael jackson'  },
@@ -384,21 +432,20 @@
     { title: 'running up that hill',     artist: 'kate bush'        },
   ];
 
-  /* First try to read file; fall back to demo after 1 s if nothing shows */
   poll();
+  updateArtwork();
+  setInterval(poll, 2000);
+
   setTimeout(function () {
     if (!visible) {
-      demoActive = true;
       var i = 0;
       show(demos[i].title, demos[i].artist);
-      setInterval(function () {
+      demoInterval = setInterval(function () {
         i = (i + 1) % demos.length;
         show(demos[i].title, demos[i].artist);
       }, 5000);
     }
-  }, 1000);
-
-  setInterval(poll, 2000);
+  }, 3000);
 }());
 </script>
 
