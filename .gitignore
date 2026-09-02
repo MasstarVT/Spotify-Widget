@@ -9,3 +9,6 @@ Thumbs.db
 
 # Env
 .env
+
+# Local Spotify credentials
+settings.txt

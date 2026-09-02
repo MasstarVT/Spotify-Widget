@@ -36,7 +36,9 @@
 
   var callback     = null;
   var accessToken  = null;
-  var spotifyDead  = false;   // true after repeated Spotify failures → fall back to Snip
+  var SPOTIFY_RETRY_MS = 30000; // how long to fall back to Snip after repeated failures
+
+  var spotifyDeadUntil = 0;   // timestamp; Spotify is retried after this passes
   var spotifyFails = 0;
   var refreshing   = false;
 
@@ -94,6 +96,14 @@
     return settings.spotify_client_id && settings.spotify_refresh_token;
   }
 
+  function markSpotifyDown() {
+    // Back off to Snip for a while, then try Spotify again — never give up
+    // permanently, so the widget recovers when Spotify/network comes up later.
+    spotifyDeadUntil = Date.now() + SPOTIFY_RETRY_MS;
+    spotifyFails = 0;
+    accessToken = null;
+  }
+
   /* ── Spotify Web API ────────────────────────────────────────────────── */
 
   function refreshAccessToken(done) {
@@ -118,7 +128,7 @@
       }
       accessToken = null;
       spotifyFails++;
-      if (spotifyFails >= 3) spotifyDead = true;
+      if (spotifyFails >= 3) markSpotifyDown();
       if (done) done(false);
     };
     xhr.send(
@@ -159,7 +169,7 @@
         // rate limited — do nothing this tick
       } else {
         spotifyFails++;
-        if (spotifyFails >= 5) spotifyDead = true;
+        if (spotifyFails >= 5) markSpotifyDown();
       }
     };
     xhr.send();
@@ -209,7 +219,7 @@
   function tick() {
     var useSpotify =
       settings.source === 'spotify' ||
-      (settings.source === 'auto' && spotifyConfigured() && !spotifyDead);
+      (settings.source === 'auto' && spotifyConfigured() && Date.now() >= spotifyDeadUntil);
     if (useSpotify) pollSpotify();
     else pollSnip();
   }
