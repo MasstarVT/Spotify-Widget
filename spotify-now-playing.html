@@ -227,6 +227,7 @@
   </div>
 </div>
 
+<script src="now-playing-source.js"></script>
 <script>
 (function () {
   'use strict';
@@ -241,7 +242,6 @@
   var changing     = false;
   var pending      = null;
   var current      = { title: '', artist: '' };
-  var demoInterval = null;
 
   /* ── Parse Snip.txt ──────────────────────────────────────────────── */
   function parse(raw) {
@@ -309,70 +309,21 @@
   }
 
   /* ── Artwork ─────────────────────────────────────────────────────── */
-  var currentBlobUrl = null;
+  var currentArtSrc = null;
 
-  function updateArtwork() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
-    xhr.responseType = 'blob';
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
-        var url = URL.createObjectURL(xhr.response);
-        artImg.onload = function () {
-          artImg.classList.add('loaded');
-          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-          currentBlobUrl = url;
-        };
-        artImg.onerror = function () { URL.revokeObjectURL(url); };
-        artImg.src = url;
-      }
-    };
-    xhr.send();
+  /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
+  function setArt(src) {
+    if (!src || src === currentArtSrc) return;
+    currentArtSrc = src;
+    artImg.onload = function () { artImg.classList.add('loaded'); };
+    artImg.src = src;
   }
 
-  /* ── Poll Snip/Snip.txt ──────────────────────────────────────────── */
-  function poll() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'Snip/Snip.txt', true);
-    xhr.overrideMimeType('text/plain; charset=utf-8');
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
-        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
-        var raw = xhr.responseText;
-        if (raw === lastRaw) return;
-        lastRaw = raw;
-        var track = parse(raw);
-        if (track) { show(track.title, track.artist); updateArtwork(); }
-      }
-    };
-    xhr.send();
-  }
+  NowPlayingSource.start(function (track) {
+    show(track.title, track.artist);
+    setArt(track.artSrc);
+  });
 
-  /* ── Demo fallback ───────────────────────────────────────────────── */
-  var demos = [
-    { title: 'Blinding Lights',  artist: 'The Weeknd'    },
-    { title: 'As It Was',        artist: 'Harry Styles'  },
-    { title: 'bad guy',          artist: 'Billie Eilish' },
-    { title: 'Shape of You',     artist: 'Ed Sheeran'    },
-    { title: 'Flowers',          artist: 'Miley Cyrus'   },
-  ];
-
-  poll();
-  updateArtwork();
-  setInterval(poll, 2000);
-
-  setTimeout(function () {
-    if (!visible) {
-      var i = 0;
-      show(demos[i].title, demos[i].artist);
-      demoInterval = setInterval(function () {
-        i = (i + 1) % demos.length;
-        show(demos[i].title, demos[i].artist);
-      }, 5000);
-    }
-  }, 3000);
 }());
 </script>
 

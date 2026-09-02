@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spotify Widget Setup</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #121212; color: #eee;
+    max-width: 720px; margin: 40px auto; padding: 0 20px 60px;
+    line-height: 1.55;
+  }
+  h1 { color: #1DB954; font-size: 26px; }
+  h2 { font-size: 18px; margin-top: 34px; }
+  .step { background: #1b1b1b; border: 1px solid #2c2c2c; border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+  code, .mono { font-family: Consolas, monospace; background: #0d0d0d; padding: 2px 6px; border-radius: 4px; }
+  input[type=text] {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; margin: 8px 0;
+    background: #0d0d0d; border: 1px solid #333; border-radius: 6px; color: #eee;
+    font-family: Consolas, monospace; font-size: 13px;
+  }
+  button {
+    background: #1DB954; color: #000; font-weight: 600; border: 0;
+    padding: 10px 22px; border-radius: 20px; font-size: 14px; cursor: pointer; margin-top: 6px;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+  textarea {
+    width: 100%; box-sizing: border-box; height: 110px; background: #0d0d0d;
+    border: 1px solid #1DB954; border-radius: 6px; color: #b5ffce;
+    font-family: Consolas, monospace; font-size: 12px; padding: 10px;
+  }
+  .err { color: #ff6b6b; font-weight: 600; }
+  .ok  { color: #1DB954; font-weight: 600; }
+  a { color: #1DB954; }
+  ol li { margin: 6px 0; }
+</style>
+</head>
+<body>
+
+<h1>Spotify Widget — one-time setup</h1>
+<p>This page gets you a <b>refresh token</b> so the OBS widgets can read your
+currently playing song straight from the Spotify API. Open this page in your
+<b>normal browser</b> (Chrome/Edge/Firefox), not in OBS. You only do this once.</p>
+
+<div class="step">
+  <h2 style="margin-top:0">Step 1 — Create a Spotify app (free)</h2>
+  <ol>
+    <li>Go to <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> and log in with your Spotify account.</li>
+    <li>Click <b>Create app</b>. Name/description can be anything (e.g. "OBS Widget").</li>
+    <li>Under <b>Redirect URIs</b> add exactly: <code>http://127.0.0.1:8888/callback</code></li>
+    <li>Check <b>Web API</b>, save, then copy the app's <b>Client ID</b>.</li>
+  </ol>
+</div>
+
+<div class="step">
+  <h2 style="margin-top:0">Step 2 — Authorize</h2>
+  <p>Paste your Client ID and click Authorize. Spotify will ask you to approve,
+  then send you to a page that <b>fails to load</b> (that's expected — nothing is
+  listening on 127.0.0.1). </p>
+  <input type="text" id="clientId" placeholder="Client ID" spellcheck="false">
+  <button id="authBtn">Authorize with Spotify</button>
+</div>
+
+<div class="step">
+  <h2 style="margin-top:0">Step 3 — Paste the URL you landed on</h2>
+  <p>From the failed page, copy the <b>entire address</b> from your browser's
+  address bar (it starts with <span class="mono">http://127.0.0.1:8888/callback?code=…</span>)
+  and paste it here:</p>
+  <input type="text" id="redirectUrl" placeholder="http://127.0.0.1:8888/callback?code=..." spellcheck="false">
+  <button id="exchangeBtn">Get refresh token</button>
+  <p id="status"></p>
+</div>
+
+<div class="step" id="resultStep" style="display:none">
+  <h2 style="margin-top:0">Step 4 — Put this in settings.txt</h2>
+  <p>Copy the lines below into a file called <code>settings.txt</code> in the same
+  folder as the widget HTML files (start from <code>settings.example.txt</code> if you like):</p>
+  <textarea id="result" readonly></textarea>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var REDIRECT = 'http://127.0.0.1:8888/callback';
+  var statusEl = document.getElementById('status');
+
+  function b64url(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function saveState(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function loadState(k)    { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+
+  document.getElementById('clientId').value = loadState('sw_client_id');
+
+  document.getElementById('authBtn').onclick = function () {
+    var clientId = document.getElementById('clientId').value.trim();
+    if (!clientId) { statusEl.innerHTML = '<span class="err">Enter your Client ID first.</span>'; return; }
+    saveState('sw_client_id', clientId);
+
+    var verifierBytes = new Uint8Array(64);
+    crypto.getRandomValues(verifierBytes);
+    var verifier = b64url(verifierBytes);
+    saveState('sw_verifier', verifier);
+
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(function (hash) {
+      var challenge = b64url(new Uint8Array(hash));
+      var url = 'https://accounts.spotify.com/authorize' +
+        '?response_type=code' +
+        '&client_id=' + encodeURIComponent(clientId) +
+        '&scope=' + encodeURIComponent('user-read-currently-playing user-read-playback-state') +
+        '&redirect_uri=' + encodeURIComponent(REDIRECT) +
+        '&code_challenge_method=S256' +
+        '&code_challenge=' + challenge;
+      window.open(url, '_blank');
+      statusEl.innerHTML = 'Approve in the Spotify tab, then come back and do Step 3.';
+    });
+  };
+
+  document.getElementById('exchangeBtn').onclick = function () {
+    var clientId = document.getElementById('clientId').value.trim() || loadState('sw_client_id');
+    var verifier = loadState('sw_verifier');
+    var pasted   = document.getElementById('redirectUrl').value.trim();
+    var m = pasted.match(/[?&]code=([^&]+)/);
+    if (!m) { statusEl.innerHTML = '<span class="err">No code found — paste the full URL from the address bar.</span>'; return; }
+    if (!verifier) { statusEl.innerHTML = '<span class="err">Missing verifier — redo Step 2 (Authorize) in this same browser.</span>'; return; }
+
+    statusEl.textContent = 'Exchanging code…';
+    fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=authorization_code' +
+            '&code=' + encodeURIComponent(m[1]) +
+            '&redirect_uri=' + encodeURIComponent(REDIRECT) +
+            '&client_id=' + encodeURIComponent(clientId) +
+            '&code_verifier=' + encodeURIComponent(verifier)
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.refresh_token) {
+        statusEl.innerHTML = '<span class="ok">Success!</span>';
+        document.getElementById('resultStep').style.display = '';
+        document.getElementById('result').value =
+          'source=auto\n' +
+          'spotify_client_id=' + clientId + '\n' +
+          'spotify_refresh_token=' + data.refresh_token + '\n' +
+          'poll_interval=2000\n';
+      } else {
+        statusEl.innerHTML = '<span class="err">Spotify error: ' +
+          (data.error_description || data.error || 'unknown') +
+          '</span> — codes expire quickly; redo Step 2 and paste the new URL right away.';
+      }
+    }).catch(function () {
+      statusEl.innerHTML = '<span class="err">Network error talking to Spotify.</span>';
+    });
+  };
+}());
+</script>
+</body>
+</html>

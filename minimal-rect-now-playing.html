@@ -146,6 +146,7 @@
   </div>
 </div>
 
+<script src="now-playing-source.js"></script>
 <script>
 (function () {
   'use strict';
@@ -161,8 +162,7 @@
   var changing       = false;
   var pending        = null;
   var current        = { title: '', artist: '' };
-  var demoInterval   = null;
-  var currentBlobUrl = null;
+  var currentArtSrc = null;
 
   function applyScroll() {
     titleEl.classList.remove('is-scrolling');
@@ -216,75 +216,19 @@
     }
   }
 
-  function updateArtwork() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'Snip/Snip_artwork.jpg', true);
-    xhr.responseType = 'blob';
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if ((xhr.status === 200 || xhr.status === 0) && xhr.response && xhr.response.size > 0) {
-        var newUrl = URL.createObjectURL(xhr.response);
-        artImg.onload = function () {
-          artImg.classList.add('loaded');
-          if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-          currentBlobUrl = newUrl;
-        };
-        artImg.onerror = function () { URL.revokeObjectURL(newUrl); };
-        artImg.src = newUrl;
-      }
-    };
-    xhr.send();
+  /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
+  function setArt(src) {
+    if (!src || src === currentArtSrc) return;
+    currentArtSrc = src;
+    artImg.onload = function () { artImg.classList.add('loaded'); };
+    artImg.src = src;
   }
 
-  function parse(raw) {
-    var lines = raw.trim().split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-    if (!lines.length) return null;
-    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
-    var dash = lines[0].indexOf(' - ');
-    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
-    return { title: lines[0], artist: '' };
-  }
+  NowPlayingSource.start(function (track) {
+    show(track.title, track.artist);
+    setArt(track.artSrc);
+  });
 
-  function poll() {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'Snip/Snip.txt', true);
-    xhr.overrideMimeType('text/plain; charset=utf-8');
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText.trim()) {
-        if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
-        var raw = xhr.responseText;
-        if (raw === lastRaw) return;
-        lastRaw = raw;
-        var track = parse(raw);
-        if (track) { show(track.title, track.artist); updateArtwork(); }
-      }
-    };
-    xhr.send();
-  }
-
-  var demos = [
-    { title: 'Digital Love',           artist: 'Daft Punk'      },
-    { title: 'Running Up That Hill',   artist: 'Kate Bush'      },
-    { title: 'Teardrop',               artist: 'Massive Attack' },
-    { title: 'Karma Police',           artist: 'Radiohead'      },
-    { title: 'God Only Knows',         artist: 'The Beach Boys' },
-  ];
-
-  poll();
-  updateArtwork();
-  setInterval(poll, 2000);
-
-  setTimeout(function () {
-    if (!visible) {
-      var i = 0;
-      show(demos[i].title, demos[i].artist);
-      demoInterval = setInterval(function () {
-        i = (i + 1) % demos.length;
-        show(demos[i].title, demos[i].artist);
-      }, 5000);
-    }
-  }, 3000);
 }());
 </script>
 
