@@ -12,3 +12,6 @@ Thumbs.db
 
 # Local Spotify credentials
 settings.txt
+
+# Snip output, in case Snip writes into this folder
+Snip/

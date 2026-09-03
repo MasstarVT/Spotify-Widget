@@ -9,13 +9,18 @@
      ║              WIDGET COLORS — edit these to customize             ║
      ╚══════════════════════════════════════════════════════════════════╝ */
   :root {
-    --accent:       #FF4500;                /* main accent (bar, glow, rule)   */
-    --accent-2:     #E60073;                /* gradient end / art fill tone    */
-    --label-color:  #FF6A33;                /* "now playing" label text        */
-    --title-color:  #FFFFFF;                /* track title text                */
-    --artist-color: rgba(255, 255, 255, 0.85); /* artist name text             */
-    --title-size:   38px;                      /* track title font size        */
-    --artist-size:  15px;                      /* artist name font size        */
+    --accent-rgb:   255, 69, 0;                /* main accent (bar, glow, rule) as R, G, B */
+    --accent-2:     #E60073;                   /* gradient end / art fill tone    */
+    --label-rgb:    255, 106, 51;              /* "now playing" label text as R, G, B */
+    --title-rgb:    255, 255, 255;             /* track title text as R, G, B     */
+    --artist-color: rgba(255, 255, 255, 0.85); /* artist name text                */
+    --title-size:   38px;                      /* track title font size           */
+    --artist-size:  15px;                      /* artist name font size           */
+
+    /* derived from the values above; no need to edit */
+    --accent:       rgb(var(--accent-rgb));
+    --label-color:  rgb(var(--label-rgb));
+    --title-color:  rgb(var(--title-rgb));
   }
 
   *, *::before, *::after {
@@ -45,7 +50,7 @@
     transform: translateX(-16px) translateY(10px);
     transition:
       opacity  0.7s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), filter 0.5s ease;
     pointer-events: none;
     user-select: none;
   }
@@ -62,15 +67,15 @@
     background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
     flex-shrink: 0;
     box-shadow:
-      0 0 8px  color-mix(in srgb, var(--accent) 95%, transparent),
-      0 0 22px color-mix(in srgb, var(--accent) 55%, transparent),
-      0 0 48px color-mix(in srgb, var(--accent) 20%, transparent);
+      0 0 8px  rgba(var(--accent-rgb), 0.95),
+      0 0 22px rgba(var(--accent-rgb), 0.55),
+      0 0 48px rgba(var(--accent-rgb), 0.2);
     animation: accent-breathe 3.5s ease-in-out infinite;
   }
 
   @keyframes accent-breathe {
-    0%, 100% { opacity: 1;    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 95%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 48px color-mix(in srgb, var(--accent) 20%, transparent); }
-    50%       { opacity: 0.78; box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 38%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 12%, transparent); }
+    0%, 100% { opacity: 1;    box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.95), 0 0 22px rgba(var(--accent-rgb), 0.55), 0 0 48px rgba(var(--accent-rgb), 0.2); }
+    50%       { opacity: 0.78; box-shadow: 0 0 5px rgba(var(--accent-rgb), 0.7), 0 0 14px rgba(var(--accent-rgb), 0.38), 0 0 30px rgba(var(--accent-rgb), 0.12); }
   }
 
   /* ─── Dark Panel ───────────────────────────────────────────────────── */
@@ -130,54 +135,6 @@
     background: linear-gradient(to top, rgba(0,0,0,0.45), transparent);
   }
 
-  .zune-vinyl {
-    position: absolute;
-    width: 52px;
-    height: 52px;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
-    border: 7px solid rgba(255,255,255,0.07);
-    animation: spin 10s linear infinite;
-    z-index: 2;
-  }
-
-  .zune-vinyl::before {
-    content: '';
-    position: absolute;
-    width: 11px; height: 11px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.10);
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-  }
-
-  .zune-vinyl::after {
-    content: '';
-    position: absolute;
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.04);
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-  }
-
-  @keyframes spin {
-    to { transform: translate(-50%, -50%) rotate(360deg); }
-  }
-
-  .zune-art-note {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 30px;
-    color: rgba(255,255,255,0.15);
-    z-index: 1;
-    line-height: 1;
-  }
-
   .zune-art-img {
     position: absolute;
     inset: 0;
@@ -209,7 +166,7 @@
     color: var(--label-color);
     line-height: 1;
     margin-bottom: 6px;
-    text-shadow: 0 0 10px color-mix(in srgb, var(--label-color) 90%, transparent);
+    text-shadow: 0 0 10px rgba(var(--label-rgb), 0.9);
   }
 
   /* scrollable title container */
@@ -231,8 +188,8 @@
     display: inline-block;
     padding-right: 80px;
     text-shadow:
-      0 0 28px color-mix(in srgb, var(--title-color) 12%, transparent),
-      0 0 56px color-mix(in srgb, var(--accent) 6%, transparent);
+      0 0 28px rgba(var(--title-rgb), 0.12),
+      0 0 56px rgba(var(--accent-rgb), 0.06);
     transition: opacity 0.35s ease;
   }
 
@@ -269,9 +226,13 @@
     height: 1px;
     width: 100%;
     max-width: 420px;
-    background: linear-gradient(to right, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 100%);
+    background: linear-gradient(to right, rgba(var(--accent-rgb), 0.3) 0%, transparent 100%);
     margin: 5px 0 3px 0;
   }
+
+  /* ─── Paused / idle (classes set by the script) ─────────────────────── */
+  .zune-widget.is-paused .zune-accent { animation-play-state: paused; }
+  .zune-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
 </style>
 </head>
 <body>
@@ -309,21 +270,10 @@
   const wrapEl   = document.getElementById('titleWrap');
   const artImg   = document.getElementById('artImg');
 
-  var lastRaw      = null;
   var visible      = false;
   var changing     = false;
   var pending      = null;
   var current      = { title: '', artist: '' };
-
-  /* ── Parse snip.txt ──────────────────────────────────────────────── */
-  function parse(raw) {
-    var lines = raw.trim().split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
-    if (!lines.length) return null;
-    if (lines.length >= 2) return { title: lines[0], artist: lines[1] };
-    var dash = lines[0].indexOf(' - ');
-    if (dash !== -1) return { artist: lines[0].slice(0, dash), title: lines[0].slice(dash + 3) };
-    return { title: lines[0], artist: '' };
-  }
 
   /* ── Scrolling marquee ───────────────────────────────────────────── */
   function applyScroll() {
@@ -348,7 +298,7 @@
     current.title  = title;
     current.artist = artist;
     titleEl.textContent  = title;
-    artistEl.textContent = artist || ' ';
+    artistEl.textContent = artist || '\u00A0';   // nbsp keeps the row height when there is no artist
     applyScroll();
   }
 
@@ -385,20 +335,27 @@
     }
   }
 
-  /* ── Fetch artwork via XHR blob (avoids file:// caching issues) ─── */
   var currentArtSrc = null;
 
   /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
   function setArt(src) {
-    if (!src || src === currentArtSrc) return;
+    if (src === currentArtSrc) return;
     currentArtSrc = src;
-    artImg.onload = function () { artImg.classList.add('loaded'); };
+    if (!src) {                       // this track has no artwork: don't keep the old cover
+      artImg.classList.remove('loaded');
+      artImg.removeAttribute('src');
+      return;
+    }
+    artImg.onload  = function () { artImg.classList.add('loaded'); };
+    artImg.onerror = function () { artImg.classList.remove('loaded'); };
     artImg.src = src;
   }
 
   NowPlayingSource.start(function (track) {
     show(track.title, track.artist);
     setArt(track.artSrc);
+    widget.classList.toggle('is-paused', !track.playing);      // freezes the "playing" animation
+    widget.classList.toggle('is-idle',   !!track.placeholder); // "Nothing playing" state
   });
 
 }());

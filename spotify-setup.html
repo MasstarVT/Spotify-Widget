@@ -14,6 +14,7 @@
   h1 { color: #1DB954; font-size: 26px; }
   h2 { font-size: 18px; margin-top: 34px; }
   .step { background: #1b1b1b; border: 1px solid #2c2c2c; border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+  .note { color: #aaa; font-size: 13px; }
   code, .mono { font-family: Consolas, monospace; background: #0d0d0d; padding: 2px 6px; border-radius: 4px; }
   input[type=text] {
     width: 100%; box-sizing: border-box; padding: 10px 12px; margin: 8px 0;
@@ -30,9 +31,12 @@
     border: 1px solid #1DB954; border-radius: 6px; color: #b5ffce;
     font-family: Consolas, monospace; font-size: 12px; padding: 10px;
   }
+  textarea.input { color: #eee; border-color: #333; height: 96px; margin: 8px 0; }
   .err { color: #ff6b6b; font-weight: 600; }
   .ok  { color: #1DB954; font-weight: 600; }
+  #status, #testStatus { white-space: pre-line; }
   a { color: #1DB954; }
+  #authLink { display: none; margin-left: 12px; }
   ol li { margin: 6px 0; }
 </style>
 </head>
@@ -41,32 +45,39 @@
 <h1>Spotify Widget — one-time setup</h1>
 <p>This page gets you a <b>refresh token</b> so the OBS widgets can read your
 currently playing song straight from the Spotify API. Open this page in your
-<b>normal browser</b> (Chrome/Edge/Firefox), not in OBS. You only do this once.</p>
+<b>normal browser</b> (Chrome/Edge/Firefox), not in OBS.</p>
+<p class="note">Since February 2026 Spotify requires the <b>app owner to have Spotify Premium</b>; without it
+the app does not work even though this page hands out a token. Refresh tokens also expire after
+<b>6 months</b>: when the widget stops picking up Spotify, run this page again and paste the new token
+into <code>settings.txt</code>.</p>
 
 <div class="step">
-  <h2 style="margin-top:0">Step 1 — Create a Spotify app (free)</h2>
+  <h2 style="margin-top:0">Step 1 — Create a Spotify app</h2>
   <ol>
-    <li>Go to <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> and log in with your Spotify account.</li>
+    <li>Go to <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> and log in with your Spotify account (the one with Premium).</li>
     <li>Click <b>Create app</b>. Name/description can be anything (e.g. "OBS Widget").</li>
     <li>Under <b>Redirect URIs</b> add exactly: <code>http://127.0.0.1:8888/callback</code></li>
-    <li>Check <b>Web API</b>, save, then copy the app's <b>Client ID</b>.</li>
+    <li>Tick <b>Web API</b>, save, then copy the app's <b>Client ID</b>.</li>
+    <li>If a friend will use this app with <b>their own</b> Spotify account, add their name and Spotify account email under <b>Settings → User Management</b> first. A development-mode app serves only the owner and the accounts listed there (up to five).</li>
   </ol>
 </div>
 
 <div class="step">
   <h2 style="margin-top:0">Step 2 — Authorize</h2>
   <p>Paste your Client ID and click Authorize. Spotify will ask you to approve,
-  then send you to a page that <b>fails to load</b> (that's expected — nothing is
-  listening on 127.0.0.1). </p>
+  then send you to a page that <b>fails to load</b> (that's expected: nothing is
+  listening on 127.0.0.1). If some page does load there, that's fine too. Either way,
+  keep that tab open for Step 3.</p>
   <input type="text" id="clientId" placeholder="Client ID" spellcheck="false">
   <button id="authBtn">Authorize with Spotify</button>
+  <a id="authLink" href="#" target="_blank" rel="noopener">open Spotify in a new tab</a>
 </div>
 
 <div class="step">
   <h2 style="margin-top:0">Step 3 — Paste the URL you landed on</h2>
-  <p>From the failed page, copy the <b>entire address</b> from your browser's
+  <p>From that tab, copy the <b>entire address</b> from your browser's
   address bar (it starts with <span class="mono">http://127.0.0.1:8888/callback?code=…</span>)
-  and paste it here:</p>
+  and paste it here. The page then checks that Spotify actually lets this account use the app.</p>
   <input type="text" id="redirectUrl" placeholder="http://127.0.0.1:8888/callback?code=..." spellcheck="false">
   <button id="exchangeBtn">Get refresh token</button>
   <p id="status"></p>
@@ -74,16 +85,44 @@ currently playing song straight from the Spotify API. Open this page in your
 
 <div class="step" id="resultStep" style="display:none">
   <h2 style="margin-top:0">Step 4 — Put this in settings.txt</h2>
-  <p>Copy the lines below into a file called <code>settings.txt</code> in the same
-  folder as the widget HTML files (start from <code>settings.example.txt</code> if you like):</p>
+  <p>Save this as <code>settings.txt</code> in the same folder as the widget HTML files
+  (the Download button does exactly that), or copy the lines into an existing one:</p>
   <textarea id="result" readonly></textarea>
+  <button id="downloadBtn">Download settings.txt</button>
+  <p class="note">The widget keeps its own copy of the token as Spotify rotates it, so you only
+  need to touch <code>settings.txt</code> again when you re-authorize. Each person needs their own
+  <code>settings.txt</code>; a copied one stops working after its first use and shows the other person's music.</p>
+</div>
+
+<div class="step">
+  <h2 style="margin-top:0">Troubleshooting — test a settings.txt</h2>
+  <p>Widget stuck on "Nothing playing" with a reason underneath? Paste the contents of that
+  <code>settings.txt</code> here (yours or a friend's) and this page will do exactly what the widget
+  does and show you Spotify's answers.</p>
+  <textarea id="testInput" class="input" spellcheck="false" placeholder="source=auto&#10;spotify_client_id=...&#10;spotify_refresh_token=...&#10;poll_interval=2000"></textarea>
+  <button id="testBtn">Test these settings</button>
+  <p id="testStatus"></p>
+  <div id="testResultWrap" style="display:none">
+    <p>Testing used up the pasted token (Spotify hands out a new one every time it is used).
+    Save this updated file in place of the old one:</p>
+    <textarea id="testResult" readonly></textarea>
+    <button id="testDownloadBtn">Download settings.txt</button>
+  </div>
 </div>
 
 <script>
 (function () {
   'use strict';
-  var REDIRECT = 'http://127.0.0.1:8888/callback';
-  var statusEl = document.getElementById('status');
+  var REDIRECT  = 'http://127.0.0.1:8888/callback';
+  var TOKEN_URL = 'https://accounts.spotify.com/api/token';
+  var API       = 'https://api.spotify.com/v1';
+  var SCOPE     = 'user-read-currently-playing';   // the only permission the widgets need
+  var statusEl  = document.getElementById('status');
+  var testEl    = document.getElementById('testStatus');
+  var authLink  = document.getElementById('authLink');
+
+  function setText(el, text, cls) { el.textContent = text; el.className = cls || ''; }
+  function setStatus(text, cls) { setText(statusEl, text, cls); }
 
   function b64url(bytes) {
     var s = '';
@@ -91,68 +130,217 @@ currently playing song straight from the Spotify API. Open this page in your
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
+  function randomToken(n) {
+    var bytes = new Uint8Array(n);
+    crypto.getRandomValues(bytes);
+    return b64url(bytes);
+  }
+
   function saveState(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function loadState(k)    { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function param(url, name) {
+    var m = url.match(new RegExp('[?&]' + name + '=([^&#]+)'));
+    return m ? m[1] : '';
+  }
+
+  function settingsText(clientId, refreshToken, source, poll) {
+    return 'source=' + (source || 'auto') + '\n' +
+           'spotify_client_id=' + clientId + '\n' +
+           'spotify_refresh_token=' + refreshToken + '\n' +
+           'poll_interval=' + (poll || '2000') + '\n';
+  }
+
+  function showResult(text, wrapId, areaId, btnId) {
+    document.getElementById(wrapId).style.display = '';
+    document.getElementById(areaId).value = text;
+    document.getElementById(btnId).onclick = function () {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      a.download = 'settings.txt';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    };
+  }
+
+  // Same rules as the widget: key=value, # comments, " # ..." after a value.
+  function parseSettings(text) {
+    var out = {};
+    text.split('\n').forEach(function (line) {
+      line = line.trim();
+      if (!line || line.charAt(0) === '#') return;
+      var eq = line.indexOf('=');
+      if (eq === -1) return;
+      out[line.slice(0, eq).trim().toLowerCase()] = line.slice(eq + 1).replace(/\s#.*$/, '').trim();
+    });
+    return out;
+  }
+
+  function jsonOf(r) {
+    return r.json().catch(function () { return {}; }).then(function (body) { return { status: r.status, body: body }; });
+  }
+
+  function apiGet(path, accessToken) {
+    return fetch(API + path, { headers: { Authorization: 'Bearer ' + accessToken } }).then(jsonOf);
+  }
+
+  function apiMessage(res) {
+    return res.body && res.body.error && res.body.error.message ? ' "' + res.body.error.message + '"' : '';
+  }
+
+  function explain403(msg) {
+    if (/not registered/i.test(msg)) {
+      return 'This Spotify account is not allowed to use the app: the app owner has to add its email under ' +
+             'Settings > User Management on developer.spotify.com/dashboard (up to five users on a development-mode app).';
+    }
+    return 'Spotify refused the request. Since February 2026 a development-mode app only works while its owner ' +
+           'has Spotify Premium, and only for the owner and the accounts listed under Settings > User Management. ' +
+           'Also check that "Web API" is ticked in the app settings.';
+  }
+
+  // Try the two calls the widget depends on and describe what happened.
+  function checkAccess(accessToken) {
+    return Promise.all([apiGet('/me', accessToken), apiGet('/me/player/currently-playing', accessToken)]).then(function (r) {
+      var me = r[0], np = r[1], lines = [], ok = true;
+      if (me.status === 200) lines.push('Signed in as ' + (me.body.display_name || me.body.id || 'your account') + '.');
+      else { ok = false; lines.push('Account check failed: HTTP ' + me.status + apiMessage(me) + '.'); }
+
+      if (np.status === 200 && np.body.item) {
+        var artists = np.body.item.artists ? ' by ' + np.body.item.artists.map(function (a) { return a.name; }).join(', ') : '';
+        lines.push('Currently playing: ' + np.body.item.name + artists + '. The widget will show this.');
+      } else if (np.status === 200 || np.status === 204) {
+        lines.push('Nothing is playing on this account right now. Play a song and the widget will show it.');
+      } else {
+        ok = false;
+        lines.push('Playback check failed: HTTP ' + np.status + apiMessage(np) + '.');
+      }
+
+      if (!ok) {
+        var msg = (np.body.error && np.body.error.message) || (me.body.error && me.body.error.message) || '';
+        if (np.status === 403 || me.status === 403) lines.push(explain403(msg));
+        else if (np.status === 401 || me.status === 401) lines.push('The access token was not accepted. Try again; if it keeps happening, redo Steps 2 and 3.');
+        else if (np.status === 429) lines.push('Spotify is rate-limiting this app: too many requests in a 30-second window, and the block can last a while. Wait several minutes before trying again, and see "Rate limits" in the README.');
+      }
+      return { ok: ok, lines: lines };
+    });
+  }
 
   document.getElementById('clientId').value = loadState('sw_client_id');
 
+  /* ── Step 2: authorize ─────────────────────────────────────────────── */
   document.getElementById('authBtn').onclick = function () {
     var clientId = document.getElementById('clientId').value.trim();
-    if (!clientId) { statusEl.innerHTML = '<span class="err">Enter your Client ID first.</span>'; return; }
+    if (!clientId) { setStatus('Enter your Client ID first.', 'err'); return; }
     saveState('sw_client_id', clientId);
 
-    var verifierBytes = new Uint8Array(64);
-    crypto.getRandomValues(verifierBytes);
-    var verifier = b64url(verifierBytes);
+    var verifier = randomToken(64);
+    var state    = randomToken(16);
     saveState('sw_verifier', verifier);
+    saveState('sw_state', state);
 
     crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(function (hash) {
-      var challenge = b64url(new Uint8Array(hash));
       var url = 'https://accounts.spotify.com/authorize' +
         '?response_type=code' +
         '&client_id=' + encodeURIComponent(clientId) +
-        '&scope=' + encodeURIComponent('user-read-currently-playing user-read-playback-state') +
+        '&scope=' + encodeURIComponent(SCOPE) +
         '&redirect_uri=' + encodeURIComponent(REDIRECT) +
+        '&state=' + encodeURIComponent(state) +
         '&code_challenge_method=S256' +
-        '&code_challenge=' + challenge;
-      window.open(url, '_blank');
-      statusEl.innerHTML = 'Approve in the Spotify tab, then come back and do Step 3.';
+        '&code_challenge=' + b64url(new Uint8Array(hash));
+      authLink.href = url;
+      authLink.style.display = 'inline';
+      var popup = window.open(url, '_blank');
+      setStatus(popup
+        ? 'Approve in the Spotify tab, then come back and do Step 3.'
+        : 'Your browser blocked the popup. Use the "open Spotify" link next to the button.');
     });
   };
 
+  /* ── Step 3: exchange the code, then check access ─────────────────── */
   document.getElementById('exchangeBtn').onclick = function () {
     var clientId = document.getElementById('clientId').value.trim() || loadState('sw_client_id');
     var verifier = loadState('sw_verifier');
     var pasted   = document.getElementById('redirectUrl').value.trim();
-    var m = pasted.match(/[?&]code=([^&]+)/);
-    if (!m) { statusEl.innerHTML = '<span class="err">No code found — paste the full URL from the address bar.</span>'; return; }
-    if (!verifier) { statusEl.innerHTML = '<span class="err">Missing verifier — redo Step 2 (Authorize) in this same browser.</span>'; return; }
+    var code     = param(pasted, 'code');
+    var err      = param(pasted, 'error');
 
-    statusEl.textContent = 'Exchanging code…';
-    fetch('https://accounts.spotify.com/api/token', {
+    if (err)       { setStatus('Spotify returned "' + err + '". Redo Step 2 and approve the request.', 'err'); return; }
+    if (!code)     { setStatus('No code found. Paste the full URL from the address bar.', 'err'); return; }
+    if (!verifier) { setStatus('Missing verifier. Redo Step 2 (Authorize) in this same browser.', 'err'); return; }
+    if (param(pasted, 'state') !== loadState('sw_state')) {
+      setStatus('That URL is from a different authorization attempt. Redo Step 2 and paste the new URL.', 'err');
+      return;
+    }
+
+    setStatus('Exchanging code…');
+    fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=authorization_code' +
-            '&code=' + encodeURIComponent(m[1]) +
+            '&code=' + encodeURIComponent(code) +
             '&redirect_uri=' + encodeURIComponent(REDIRECT) +
             '&client_id=' + encodeURIComponent(clientId) +
             '&code_verifier=' + encodeURIComponent(verifier)
-    }).then(function (r) { return r.json(); }).then(function (data) {
-      if (data.refresh_token) {
-        statusEl.innerHTML = '<span class="ok">Success!</span>';
-        document.getElementById('resultStep').style.display = '';
-        document.getElementById('result').value =
-          'source=auto\n' +
-          'spotify_client_id=' + clientId + '\n' +
-          'spotify_refresh_token=' + data.refresh_token + '\n' +
-          'poll_interval=2000\n';
-      } else {
-        statusEl.innerHTML = '<span class="err">Spotify error: ' +
-          (data.error_description || data.error || 'unknown') +
-          '</span> — codes expire quickly; redo Step 2 and paste the new URL right away.';
+    }).then(jsonOf).then(function (res) {
+      var data = res.body;
+      if (!data.refresh_token) {
+        setStatus('Spotify error: ' + (data.error_description || data.error || ('HTTP ' + res.status)) +
+                  '. Codes expire quickly: redo Step 2 and paste the new URL right away.', 'err');
+        return;
       }
+      showResult(settingsText(clientId, data.refresh_token), 'resultStep', 'result', 'downloadBtn');
+      setStatus('Token received. Checking that this account can use the app…');
+      return checkAccess(data.access_token).then(function (chk) {
+        setStatus((chk.ok ? 'Success!\n' : 'Token received, but something is wrong.\n') +
+                  chk.lines.join('\n') +
+                  (chk.ok ? '\nSave the settings below.' : '\nThe settings below are still valid and start working once this is fixed.'),
+                  chk.ok ? 'ok' : 'err');
+      });
     }).catch(function () {
-      statusEl.innerHTML = '<span class="err">Network error talking to Spotify.</span>';
+      setStatus('Network error talking to Spotify.', 'err');
+    });
+  };
+
+  /* ── Troubleshooting: test an existing settings.txt ───────────────── */
+  document.getElementById('testBtn').onclick = function () {
+    var cfg = parseSettings(document.getElementById('testInput').value);
+    document.getElementById('testResultWrap').style.display = 'none';
+    if (!cfg.spotify_client_id || !cfg.spotify_refresh_token) {
+      setText(testEl, 'Paste the whole settings.txt: it needs spotify_client_id and spotify_refresh_token lines.', 'err');
+      return;
+    }
+    setText(testEl, 'Refreshing the token…');
+    fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=refresh_token' +
+            '&refresh_token=' + encodeURIComponent(cfg.spotify_refresh_token) +
+            '&client_id=' + encodeURIComponent(cfg.spotify_client_id)
+    }).then(jsonOf).then(function (res) {
+      if (!res.body.access_token) {
+        var e = res.body.error || ('HTTP ' + res.status), why;
+        if (e === 'invalid_grant') {
+          why = 'Spotify rejected this refresh token. Either a widget has already used it (tokens are single-use and the ' +
+                'widget keeps the newest one itself, so a copied settings.txt stops working), or it expired (6 months) or ' +
+                'was revoked. Redo Steps 2 and 3 on the machine that will use it.';
+        } else if (e === 'invalid_client') {
+          why = 'Spotify does not recognise this Client ID. Copy it again from the app in the Developer Dashboard.';
+        } else {
+          why = 'Spotify says: ' + (res.body.error_description || e) + '.';
+        }
+        setText(testEl, 'Token refresh failed. ' + why, 'err');
+        return;
+      }
+      return checkAccess(res.body.access_token).then(function (chk) {
+        setText(testEl, ['Token refresh: OK.'].concat(chk.lines).join('\n'), chk.ok ? 'ok' : 'err');
+        if (res.body.refresh_token) {
+          showResult(settingsText(cfg.spotify_client_id, res.body.refresh_token, cfg.source, cfg.poll_interval),
+                     'testResultWrap', 'testResult', 'testDownloadBtn');
+        }
+      });
+    }).catch(function () {
+      setText(testEl, 'Network error talking to Spotify.', 'err');
     });
   };
 }());

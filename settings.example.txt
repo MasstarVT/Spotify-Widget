@@ -1,8 +1,10 @@
 # Copy this file to settings.txt (same folder as the widget HTML files)
 # and fill in your Spotify details. Without a settings.txt the widgets
 # behave exactly as before, reading Snip/Snip.txt.
+#
+# Lines starting with # are comments, and so is " # ..." after a value.
 
-# Where track info comes from:
+# Where track info comes from (not case-sensitive):
 #   auto    = use the Spotify API if the credentials below work,
 #             otherwise fall back to Snip files
 #   spotify = Spotify API only
@@ -12,8 +14,10 @@ source=auto
 # From your app at https://developer.spotify.com/dashboard
 spotify_client_id=
 
-# Generated once with spotify-setup.html (open it in your normal browser)
+# Generated with spotify-setup.html (open it in your normal browser).
+# Spotify rotates this token on every use; the widget keeps the newest one
+# in OBS's browser storage, so only replace this line when you re-authorize.
 spotify_refresh_token=
 
-# How often to check for track changes, in milliseconds
+# How often to check for track changes, in milliseconds (minimum 500)
 poll_interval=2000

@@ -41,7 +41,7 @@
       opacity   0.6s cubic-bezier(0.22, 1, 0.36, 1),
       transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
       background-color 1.2s ease,
-      box-shadow 1.2s ease;
+      box-shadow 1.2s ease, filter 0.5s ease;
     background-color: rgba(20, 20, 22, 0.92);
     box-shadow:
       0 0 0 0.5px rgba(255,255,255,0.10),
@@ -167,9 +167,6 @@
     transition: opacity 0.3s ease, color 1.2s ease;
   }
 
-  /* Apple Music tints the artist name with the art color */
-  .am-artist.tinted { color: var(--tint, rgba(255,255,255,0.5)); }
-
   /* ─── Animated bars ────────────────────────────────────────────────── */
   .am-bars {
     display: flex;
@@ -199,6 +196,11 @@
   /* ─── Track change fade ─────────────────────────────────────────────── */
   .is-changing .am-title,
   .is-changing .am-artist { opacity: 0; }
+
+  /* ─── Paused / idle (classes set by the script) ─────────────────────── */
+  .am-widget.is-paused .am-bar { animation-play-state: paused; }
+  .am-widget.is-idle   .am-bars { visibility: hidden; }
+  .am-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
 </style>
 </head>
 <body>
@@ -245,12 +247,11 @@
   var canvas    = document.getElementById('colorCanvas');
   var ctx       = canvas.getContext('2d');
 
-  var lastRaw      = null;
   var visible      = false;
   var changing     = false;
   var pending      = null;
   var current      = { title: '', artist: '' };
-  var currentBlobUrl = null;
+  var currentArtSrc  = null;
 
   /* ── Color extraction ─────────────────────────────────────────────── */
   function extractColor(img) {
@@ -320,7 +321,7 @@
     current.title  = title;
     current.artist = artist;
     titleEl.textContent  = title;
-    artistEl.textContent = artist || ' ';
+    artistEl.textContent = artist || '\u00A0';   // nbsp keeps the row height when there is no artist
     applyScroll();
   }
 
@@ -351,20 +352,36 @@
   }
 
   /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
+  function resetColor() {
+    widget.style.backgroundColor = '';
+    widget.style.boxShadow = '';
+    glow.style.opacity = '0';
+    artistEl.style.color = '';
+  }
+
   function setArt(src) {
-    if (!src || src === currentBlobUrl) return;
-    currentBlobUrl = src;
+    if (src === currentArtSrc) return;
+    currentArtSrc = src;
+    if (!src) {                       // this track has no artwork: drop the old cover and tint
+      artImg.classList.remove('loaded');
+      artImg.removeAttribute('src');
+      resetColor();
+      return;
+    }
     artImg.crossOrigin = src.indexOf('http') === 0 ? 'anonymous' : null;
     artImg.onload = function () {
       artImg.classList.add('loaded');
       try { applyColor(extractColor(artImg)); } catch (e) { /* tainted canvas */ }
     };
+    artImg.onerror = function () { artImg.classList.remove('loaded'); resetColor(); };
     artImg.src = src;
   }
 
   NowPlayingSource.start(function (track) {
     show(track.title, track.artist);
     setArt(track.artSrc);
+    widget.classList.toggle('is-paused', !track.playing);      // freezes the "playing" animation
+    widget.classList.toggle('is-idle',   !!track.placeholder); // "Nothing playing" state
   });
 
 }());

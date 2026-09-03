@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Moss Cryptid Now Playing</title>
+<title>Xbox Now Playing</title>
 <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -41,7 +41,7 @@
     padding: 14px 16px;
     opacity: 0;
     transform: translateY(12px);
-    transition: opacity 0.7s ease, transform 0.7s ease;
+    transition: opacity 0.7s ease, transform 0.7s ease, filter 0.5s ease;
     user-select: none;
     pointer-events: none;
     animation: mc-breathe 4s ease-in-out infinite;
@@ -243,6 +243,11 @@
   /* ─── Track change fade ─────────────────────────────────────────── */
   .is-changing .mc-title,
   .is-changing .mc-artist { opacity: 0; }
+
+  /* ─── Paused / idle (classes set by the script) ─────────────────────── */
+  .mc-widget.is-paused .mc-eq-bar { animation-play-state: paused; }
+  .mc-widget.is-idle   .mc-eq { visibility: hidden; }
+  .mc-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
 </style>
 </head>
 <body>
@@ -287,7 +292,6 @@
   var wrapEl   = document.getElementById('titleWrap');
   var artImg   = document.getElementById('artImg');
 
-  var lastRaw        = null;
   var visible        = false;
   var changing       = false;
   var pending        = null;
@@ -320,7 +324,7 @@
     current.title  = title;
     current.artist = artist;
     titleEl.textContent  = title;
-    artistEl.textContent = artist || ' ';
+    artistEl.textContent = artist || '\u00A0';   // nbsp keeps the row height when there is no artist
     applyScroll();
   }
 
@@ -349,18 +353,28 @@
     }
   }
 
-  /* ── Artwork ─────────────────────────────────────────────────────── */
   /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
   function setArt(src) {
-    if (!src || src === currentArtSrc) return;
+    if (src === currentArtSrc) return;
     currentArtSrc = src;
-    artImg.onload = function () { artImg.classList.add('loaded'); };
+    if (!src) {                       // this track has no artwork: don't keep the old cover
+      artImg.classList.remove('loaded');
+      artImg.removeAttribute('src');
+      return;
+    }
+    artImg.onload  = function () { artImg.classList.add('loaded'); };
+    artImg.onerror = function () { artImg.classList.remove('loaded'); };
     artImg.src = src;
   }
+
+  /* Web fonts swap in after the first paint: re-measure the marquee when they do */
+  if (document.fonts) document.fonts.addEventListener('loadingdone', applyScroll);
 
   NowPlayingSource.start(function (track) {
     show(track.title, track.artist);
     setArt(track.artSrc);
+    widget.classList.toggle('is-paused', !track.playing);      // freezes the "playing" animation
+    widget.classList.toggle('is-idle',   !!track.placeholder); // "Nothing playing" state
   });
 
 }());

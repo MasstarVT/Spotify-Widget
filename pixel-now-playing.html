@@ -44,7 +44,7 @@
     image-rendering: pixelated;
     opacity: 0;
     transform: translateY(10px);
-    transition: opacity 0.5s ease, transform 0.5s ease;
+    transition: opacity 0.5s ease, transform 0.5s ease, filter 0.5s ease;
     user-select: none;
     pointer-events: none;
   }
@@ -226,6 +226,11 @@
   /* ─── Track change fade ─────────────────────────────────────────── */
   .is-changing .px-title,
   .is-changing .px-artist { opacity: 0; }
+
+  /* ─── Paused / idle (classes set by the script) ─────────────────────── */
+  .px-widget.is-paused .px-eq-bar { animation-play-state: paused; }
+  .px-widget.is-idle   .px-eq { visibility: hidden; }
+  .px-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
 </style>
 </head>
 <body>
@@ -272,7 +277,6 @@
   var wrapEl   = document.getElementById('titleWrap');
   var artImg   = document.getElementById('artImg');
 
-  var lastRaw        = null;
   var visible        = false;
   var changing       = false;
   var pending        = null;
@@ -305,7 +309,7 @@
     current.title  = title;
     current.artist = artist;
     titleEl.textContent  = title;
-    artistEl.textContent = artist || ' ';
+    artistEl.textContent = artist || '\u00A0';   // nbsp keeps the row height when there is no artist
     applyScroll();
   }
 
@@ -334,18 +338,28 @@
     }
   }
 
-  /* ── Artwork ─────────────────────────────────────────────────────── */
   /* ── Artwork (src from NowPlayingSource: https URL or blob URL) ───── */
   function setArt(src) {
-    if (!src || src === currentArtSrc) return;
+    if (src === currentArtSrc) return;
     currentArtSrc = src;
-    artImg.onload = function () { artImg.classList.add('loaded'); };
+    if (!src) {                       // this track has no artwork: don't keep the old cover
+      artImg.classList.remove('loaded');
+      artImg.removeAttribute('src');
+      return;
+    }
+    artImg.onload  = function () { artImg.classList.add('loaded'); };
+    artImg.onerror = function () { artImg.classList.remove('loaded'); };
     artImg.src = src;
   }
+
+  /* Web fonts swap in after the first paint: re-measure the marquee when they do */
+  if (document.fonts) document.fonts.addEventListener('loadingdone', applyScroll);
 
   NowPlayingSource.start(function (track) {
     show(track.title, track.artist);
     setArt(track.artSrc);
+    widget.classList.toggle('is-paused', !track.playing);      // freezes the "playing" animation
+    widget.classList.toggle('is-idle',   !!track.placeholder); // "Nothing playing" state
   });
 
 }());
