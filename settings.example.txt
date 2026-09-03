@@ -19,5 +19,6 @@ spotify_client_id=
 # in OBS's browser storage, so only replace this line when you re-authorize.
 spotify_refresh_token=
 
-# How often to check for track changes, in milliseconds (minimum 500)
+# How often to check for track changes, in milliseconds. 2000 is the minimum
+# (Spotify limits requests per app; see "Rate limits" in the README).
 poll_interval=2000

@@ -43,6 +43,10 @@
   var MIN_ART_WIDTH      = 160;   // smallest Spotify cover that still looks sharp in a widget
   var RATE_LIMIT_MIN_MS  = 30000; // first wait after a 429 (Retry-After is not readable from a browser)
   var RATE_LIMIT_MAX_MS  = 600000; // longest wait between attempts while rate limited
+  var MIN_POLL_MS        = 2000;  // poll_interval floor: 15 requests per 30 s window at most
+  var MAX_REQUESTS_PER_WINDOW = 20; // hard cap per OBS per 30 s, whatever settings.txt says
+  var RATE_WINDOW_MS     = 30000; // Spotify counts requests over a rolling 30 s window
+  var IDLE_POLL_EVERY    = 3;     // while nothing has played for a while, poll every Nth tick
 
   var settings = {
     source: 'auto',
@@ -68,6 +72,7 @@
   var rateLimitMs      = 0;      // current 429 wait; doubles while the limit persists
   var instanceId       = Math.random().toString(36).slice(2);   // this widget, for shared polling
   var spotifyIdleTicks = 0;
+  var idlePolls        = 0;      // ticks seen while the idle placeholder is up
   var spotifyError     = '';     // last hard failure, shown in the placeholder while nothing plays
 
   /* Snip state */
@@ -156,7 +161,7 @@
           var val = line.slice(eq + 1).replace(/\s#.*$/, '').trim();   // " # comment" after a value
           if (key === 'poll_interval') {
             var n = parseInt(val, 10);
-            if (n >= 500) settings.poll_interval = n;                 // floor: 500 ms
+            if (n >= MIN_POLL_MS) settings.poll_interval = n;         // below the floor: keep the default
           } else if (key === 'source') {
             val = val.toLowerCase();
             if (val === 'auto' || val === 'spotify' || val === 'snip') settings.source = val;
@@ -343,6 +348,20 @@
     return shared;
   }
 
+  // Hard cap: never more than MAX_REQUESTS_PER_WINDOW Spotify requests per
+  // rolling window from this OBS, counted across all widgets, whatever the
+  // settings say. Registers the request when it returns true.
+  function underBudget() {
+    var key = STORE_KEY + ':requests:' + settings.spotify_refresh_token;
+    var now = Date.now(), stamps = [];
+    try { stamps = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { /* none yet */ }
+    stamps = stamps.filter(function (t) { return now - t < RATE_WINDOW_MS; });
+    if (stamps.length >= MAX_REQUESTS_PER_WINDOW) return false;
+    stamps.push(now);
+    try { localStorage.setItem(key, JSON.stringify(stamps)); } catch (e) { /* storage unavailable */ }
+    return true;
+  }
+
   function pollSpotify() {
     var shared = syncSharedWait();
     if (Date.now() < spotifyWaitUntil) return;
@@ -353,11 +372,17 @@
     }
     if (shared && shared.owner && shared.owner !== instanceId &&
         Date.now() - shared.at < settings.poll_interval * 1.5) {
-      handlePlayerResponse(shared.status, shared.text, null);   // reuse the other widget's answer
+      // Another widget is polling: reuse its latest answer (none yet right
+      // after it claimed its first poll; ours comes next tick).
+      if (shared.status !== undefined) handlePlayerResponse(shared.status, shared.text, null);
       return;
     }
     if (polling) return;
+    if (!underBudget()) return;
     polling = true;
+    // Claim the poll before sending, so widgets whose tick lands while this
+    // request is in flight reuse it instead of asking Spotify too.
+    writePlayer({ owner: instanceId, at: Date.now() });
     var xhr = new XMLHttpRequest();
     xhr.open('GET', PLAYER_URL, true);
     xhr.timeout = REQUEST_TIMEOUT_MS;
@@ -366,8 +391,7 @@
       if (xhr.readyState !== 4) return;
       polling = false;
       if (xhr.status === 200 || xhr.status === 204) {
-        writePlayer({ owner: instanceId, at: Date.now(), status: xhr.status,
-                      text: xhr.status === 200 ? xhr.responseText : '' });
+        writePlayer({ status: xhr.status, text: xhr.status === 200 ? xhr.responseText : '' });
       }
       handlePlayerResponse(xhr.status, xhr.responseText, xhr);
     };
@@ -504,8 +528,15 @@
     var wantSpotify = spotifyConfigured() && settings.source !== 'snip';
     if (wantSpotify) syncSharedWait();
     var now = Date.now();
-    if (wantSpotify && now >= spotifyDeadUntil && now >= spotifyWaitUntil) pollSpotify();
-    else if (settings.source !== 'spotify') pollSnip();
+    if (wantSpotify && now >= spotifyDeadUntil && now >= spotifyWaitUntil) {
+      // Nothing has played for a while: poll less often. A resume still shows
+      // within a few seconds, and an OBS left open all day costs a third.
+      var idleShown = lastTrack && lastTrack.placeholder && !lastTrack.artist;
+      if (idleShown) { if (++idlePolls % IDLE_POLL_EVERY !== 0) return; } else idlePolls = 0;
+      pollSpotify();
+    } else if (settings.source !== 'spotify') {
+      pollSnip();
+    }
   }
 
   window.NowPlayingSource = {
