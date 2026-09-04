@@ -283,6 +283,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
     try { return await (await (await dir.getFileHandle('settings.txt')).getFile()).text(); } catch (e) { return null; }
   }
 
+  // Creates settings.txt if the folder has none yet, otherwise replaces it.
   async function writeSettingsFile(dir, text) {
     var fh = await dir.getFileHandle('settings.txt', { create: true });
     var w = await fh.createWritable();
@@ -308,12 +309,14 @@ the app does not work even though this page hands out a token. Refresh tokens al
     saveBtn.onclick = async function () {
       setText(status, 'Pick the folder that holds the widget HTML files…');
       try {
-        var dir    = await widgetFolder();
-        var wanted = parseSettings(area.value);
-        var text   = mergeSettings(await readSettingsFile(dir), wanted.spotify_client_id, wanted.spotify_refresh_token);
+        var dir      = await widgetFolder();
+        var wanted   = parseSettings(area.value);
+        var existing = await readSettingsFile(dir);            // null when the folder has no settings.txt yet
+        var text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
         await writeSettingsFile(dir, text);
         area.value = text;
-        setText(status, 'Saved settings.txt into "' + dir.name + '". Add a widget to OBS (or refresh one) and play something.', 'ok');
+        setText(status, (existing === null ? 'Created' : 'Updated') + ' settings.txt in "' + dir.name +
+                        '". Add a widget to OBS (or refresh one) and play something.', 'ok');
       } catch (e) {
         setText(status, describeError(e), 'err');
       }
