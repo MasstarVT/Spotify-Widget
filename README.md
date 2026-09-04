@@ -43,8 +43,8 @@ Widgets other than Zune, Spotify, Apple Music, iPod, and Basic load their fonts 
 One-time setup, done in your normal browser (not OBS):
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), log in, and click **Create app**. Name it anything, add the Redirect URI `http://127.0.0.1:8888/callback`, check **Web API**, and save.
-2. Open `spotify-setup.html` (double-click it) and follow the steps on the page: paste your app's **Client ID**, authorize, and paste back the URL Spotify redirects you to. The page gives you the finished `settings.txt` contents and a **Download settings.txt** button.
-3. Put `settings.txt` next to the widget HTML files (or copy `settings.example.txt` and paste the generated lines in):
+2. Open `spotify-setup.html` (double-click it; Chrome or Edge gives the smoothest path) and follow the steps on the page: paste your app's **Client ID**, authorize, and paste back the URL Spotify redirects you to. The page checks that Spotify lets the account use the app and shows what is playing.
+3. Click **Save into the widget folder** and pick the folder that holds the widget HTML files. The page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder for next time. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into that folder yourself. The file looks like this:
 
    ```
    source=auto
@@ -85,7 +85,7 @@ There are two ways to set a friend up:
 
 **They use your app** (your Client ID). A development-mode app only serves the owner and the accounts the owner has listed: open [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), open the app, go to **Settings → User Management**, and add their name and the email of their Spotify account (up to five users on new apps; your Premium has to stay active). Then they run `spotify-setup.html` with **your** Client ID while logged in to **their** Spotify account.
 
-Either way, the setup page checks the account at the end of Step 3 and shows what Spotify answered, including what is currently playing. If a widget still shows "Nothing playing" with a reason underneath, paste that `settings.txt` into the **Troubleshooting** box on `spotify-setup.html` on any computer: it does exactly what the widget does and prints Spotify's answers. Testing uses the token up, so save the updated file the test hands back.
+Either way, the setup page checks the account at the end of Step 3 and shows what Spotify answered, including what is currently playing. If a widget still shows "Nothing playing" with a reason underneath, open `spotify-setup.html`, load (or paste) that `settings.txt` into the **Troubleshooting** box, and test it: the page does exactly what the widget does and prints Spotify's answers. Testing uses the token up, so save the updated file the test hands back; the Save button writes it straight into the widget folder.
 
 If you tried someone else's `settings.txt` on your own machine, just put your own file back. The widget keeps a separate saved login for each `settings.txt` token, so yours resumes where it left off.
 

@@ -26,6 +26,8 @@
     padding: 10px 22px; border-radius: 20px; font-size: 14px; cursor: pointer; margin-top: 6px;
   }
   button:disabled { opacity: .4; cursor: default; }
+  button.secondary { background: #2c2c2c; color: #eee; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   textarea {
     width: 100%; box-sizing: border-box; height: 110px; background: #0d0d0d;
     border: 1px solid #1DB954; border-radius: 6px; color: #b5ffce;
@@ -34,7 +36,7 @@
   textarea.input { color: #eee; border-color: #333; height: 96px; margin: 8px 0; }
   .err { color: #ff6b6b; font-weight: 600; }
   .ok  { color: #1DB954; font-weight: 600; }
-  #status, #testStatus { white-space: pre-line; }
+  #status, #testStatus, #saveStatus, #testSaveStatus { white-space: pre-line; }
   a { color: #1DB954; }
   #authLink { display: none; margin-left: 12px; }
   ol li { margin: 6px 0; }
@@ -44,12 +46,12 @@
 
 <h1>Spotify Widget — one-time setup</h1>
 <p>This page gets you a <b>refresh token</b> so the OBS widgets can read your
-currently playing song straight from the Spotify API. Open this page in your
-<b>normal browser</b> (Chrome/Edge/Firefox), not in OBS.</p>
+currently playing song straight from the Spotify API, and writes it into
+<code>settings.txt</code> for you. Open this page in your <b>normal browser</b>
+(Chrome or Edge can save the file directly; Firefox and others download it), not in OBS.</p>
 <p class="note">Since February 2026 Spotify requires the <b>app owner to have Spotify Premium</b>; without it
 the app does not work even though this page hands out a token. Refresh tokens also expire after
-<b>6 months</b>: when the widget stops picking up Spotify, run this page again and paste the new token
-into <code>settings.txt</code>.</p>
+<b>6 months</b>: when the widget stops picking up Spotify, run this page again.</p>
 
 <div class="step">
   <h2 style="margin-top:0">Step 1 — Create a Spotify app</h2>
@@ -84,29 +86,42 @@ into <code>settings.txt</code>.</p>
 </div>
 
 <div class="step" id="resultStep" style="display:none">
-  <h2 style="margin-top:0">Step 4 — Put this in settings.txt</h2>
-  <p>Save this as <code>settings.txt</code> in the same folder as the widget HTML files
-  (the Download button does exactly that), or copy the lines into an existing one:</p>
+  <h2 style="margin-top:0">Step 4 — Save settings.txt</h2>
+  <p>This is your <code>settings.txt</code>. It belongs in the same folder as the widget HTML files.</p>
   <textarea id="result" readonly></textarea>
-  <button id="downloadBtn">Download settings.txt</button>
+  <div class="row">
+    <button id="saveBtn">Save into the widget folder</button>
+    <button id="downloadBtn" class="secondary">Download instead</button>
+  </div>
+  <p id="saveStatus"></p>
+  <p class="note" id="saveNote">"Save into the widget folder" asks you to pick that folder once, checks that the widget
+  files are in it, and writes <code>settings.txt</code> there, keeping any other settings you already had.
+  Chrome and Edge only; in other browsers use Download and move the file into the folder yourself.</p>
   <p class="note">The widget keeps its own copy of the token as Spotify rotates it, so you only
-  need to touch <code>settings.txt</code> again when you re-authorize. Each person needs their own
-  <code>settings.txt</code>; a copied one stops working after its first use and shows the other person's music.</p>
+  need to run this page again when you re-authorize. Each person needs their own
+  <code>settings.txt</code>: a copied one stops working after its first use and shows the other person's music.</p>
 </div>
 
 <div class="step">
   <h2 style="margin-top:0">Troubleshooting — test a settings.txt</h2>
-  <p>Widget stuck on "Nothing playing" with a reason underneath? Paste the contents of that
-  <code>settings.txt</code> here (yours or a friend's) and this page will do exactly what the widget
-  does and show you Spotify's answers.</p>
+  <p>Widget stuck on "Nothing playing" with a reason underneath? Load the <code>settings.txt</code>
+  from the widget folder (or paste its contents, yours or a friend's) and this page will do exactly what
+  the widget does and show you Spotify's answers.</p>
   <textarea id="testInput" class="input" spellcheck="false" placeholder="source=auto&#10;spotify_client_id=...&#10;spotify_refresh_token=...&#10;poll_interval=2000"></textarea>
-  <button id="testBtn">Test these settings</button>
+  <div class="row">
+    <button id="testBtn">Test these settings</button>
+    <button id="loadBtn" class="secondary">Load from the widget folder</button>
+  </div>
   <p id="testStatus"></p>
   <div id="testResultWrap" style="display:none">
     <p>Testing used up the pasted token (Spotify hands out a new one every time it is used).
     Save this updated file in place of the old one:</p>
     <textarea id="testResult" readonly></textarea>
-    <button id="testDownloadBtn">Download settings.txt</button>
+    <div class="row">
+      <button id="testSaveBtn">Save into the widget folder</button>
+      <button id="testDownloadBtn" class="secondary">Download instead</button>
+    </div>
+    <p id="testSaveStatus"></p>
   </div>
 </div>
 
@@ -117,9 +132,11 @@ into <code>settings.txt</code>.</p>
   var TOKEN_URL = 'https://accounts.spotify.com/api/token';
   var API       = 'https://api.spotify.com/v1';
   var SCOPE     = 'user-read-currently-playing';   // the only permission the widgets need
+  var canWrite  = typeof window.showDirectoryPicker === 'function';   // Chrome / Edge
   var statusEl  = document.getElementById('status');
   var testEl    = document.getElementById('testStatus');
   var authLink  = document.getElementById('authLink');
+  var clientIdEl = document.getElementById('clientId');
 
   function setText(el, text, cls) { el.textContent = text; el.className = cls || ''; }
   function setStatus(text, cls) { setText(statusEl, text, cls); }
@@ -150,20 +167,6 @@ into <code>settings.txt</code>.</p>
            'poll_interval=' + (poll || '2000') + '\n';
   }
 
-  function showResult(text, wrapId, areaId, btnId) {
-    document.getElementById(wrapId).style.display = '';
-    document.getElementById(areaId).value = text;
-    document.getElementById(btnId).onclick = function () {
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-      a.download = 'settings.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    };
-  }
-
   // Same rules as the widget: key=value, # comments, " # ..." after a value.
   function parseSettings(text) {
     var out = {};
@@ -177,6 +180,159 @@ into <code>settings.txt</code>.</p>
     return out;
   }
 
+  // Keep whatever else is in an existing settings.txt (source, poll_interval,
+  // comments); only the client id and refresh token change.
+  function mergeSettings(existing, clientId, refreshToken) {
+    if (!existing || !existing.trim()) return settingsText(clientId, refreshToken);
+    var values = { spotify_client_id: clientId, spotify_refresh_token: refreshToken };
+    var seen = {};
+    var lines = existing.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
+      var m = line.match(/^(\s*)(spotify_client_id|spotify_refresh_token)(\s*=)/i);
+      if (!m) return line;
+      var key = m[2].toLowerCase();
+      seen[key] = true;
+      return m[1] + key + '=' + values[key];
+    });
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    Object.keys(values).forEach(function (key) { if (!seen[key]) lines.push(key + '=' + values[key]); });
+    if (!/^\s*source\s*=/im.test(existing)) lines.unshift('source=auto');
+    return lines.join('\n') + '\n';
+  }
+
+  function download(text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = 'settings.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function showResult(text, wrapId, areaId) {
+    document.getElementById(wrapId).style.display = '';
+    document.getElementById(areaId).value = text;
+  }
+
+  /* ── writing settings.txt straight into the widget folder ─────────── */
+  // Chrome and Edge let a page write files once the user has picked a folder.
+  // The folder handle is remembered (IndexedDB) so later saves need no re-pick.
+  var DB_NAME = 'now-playing-setup', DB_STORE = 'handles', DB_KEY = 'widgetFolder';
+
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(DB_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function loadHandle() {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve) {
+        var get = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(DB_KEY);
+        get.onsuccess = function () { resolve(get.result || null); };
+        get.onerror = function () { resolve(null); };
+      });
+    }).catch(function () { return null; });
+  }
+
+  function saveHandle(handle) {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(handle, DB_KEY);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { resolve(); };
+      });
+    }).catch(function () {});
+  }
+
+  async function hasWidgetFiles(dir) {
+    try { await dir.getFileHandle('now-playing-source.js'); return true; } catch (e) { return false; }
+  }
+
+  async function permitted(dir) {
+    var opts = { mode: 'readwrite' };
+    if ((await dir.queryPermission(opts)) === 'granted') return true;
+    return (await dir.requestPermission(opts)) === 'granted';
+  }
+
+  // The widget folder: the remembered one if it still works, otherwise the
+  // user picks it (this must run from a click). Refuses folders that do not
+  // contain the widget files, so settings.txt cannot land in the wrong place.
+  async function widgetFolder() {
+    var dir = await loadHandle();
+    if (dir) {
+      try { if (!(await permitted(dir)) || !(await hasWidgetFiles(dir))) dir = null; } catch (e) { dir = null; }
+    }
+    if (!dir) {
+      dir = await window.showDirectoryPicker({ id: 'now-playing-widget', mode: 'readwrite' });
+      if (!(await hasWidgetFiles(dir))) {
+        var err = new Error('That folder has no now-playing-source.js in it. Pick the folder where the widget HTML files are.');
+        err.name = 'WrongFolder';
+        throw err;
+      }
+      await saveHandle(dir);
+    }
+    return dir;
+  }
+
+  async function readSettingsFile(dir) {
+    try { return await (await (await dir.getFileHandle('settings.txt')).getFile()).text(); } catch (e) { return null; }
+  }
+
+  async function writeSettingsFile(dir, text) {
+    var fh = await dir.getFileHandle('settings.txt', { create: true });
+    var w = await fh.createWritable();
+    await w.write(text);
+    await w.close();
+  }
+
+  function describeError(e) {
+    if (e && e.name === 'AbortError') return 'Folder pick cancelled.';
+    if (e && e.name === 'WrongFolder') return e.message;
+    if (e && e.name === 'NotAllowedError') return 'The browser did not allow writing there. Use Download instead.';
+    return 'Could not write the file' + (e && e.message ? ': ' + e.message : '') + '. Use Download instead.';
+  }
+
+  // Wire a "Save into the widget folder" / "Download" pair for the settings
+  // text held in the textarea `areaId`.
+  function wireSaveButtons(saveId, downloadId, areaId, statusId) {
+    var saveBtn = document.getElementById(saveId);
+    var area    = document.getElementById(areaId);
+    var status  = document.getElementById(statusId);
+    document.getElementById(downloadId).onclick = function () { download(area.value); };
+    if (!canWrite) { saveBtn.style.display = 'none'; return; }
+    saveBtn.onclick = async function () {
+      setText(status, 'Pick the folder that holds the widget HTML files…');
+      try {
+        var dir    = await widgetFolder();
+        var wanted = parseSettings(area.value);
+        var text   = mergeSettings(await readSettingsFile(dir), wanted.spotify_client_id, wanted.spotify_refresh_token);
+        await writeSettingsFile(dir, text);
+        area.value = text;
+        setText(status, 'Saved settings.txt into "' + dir.name + '". Add a widget to OBS (or refresh one) and play something.', 'ok');
+      } catch (e) {
+        setText(status, describeError(e), 'err');
+      }
+    };
+  }
+
+  wireSaveButtons('saveBtn', 'downloadBtn', 'result', 'saveStatus');
+  wireSaveButtons('testSaveBtn', 'testDownloadBtn', 'testResult', 'testSaveStatus');
+  if (!canWrite) {
+    document.getElementById('saveNote').textContent =
+      'Your browser cannot write files directly (Chrome and Edge can). Download the file and move it into the folder with the widget HTML files.';
+    document.getElementById('downloadBtn').textContent = 'Download settings.txt';
+    document.getElementById('downloadBtn').className = '';
+    document.getElementById('testDownloadBtn').textContent = 'Download settings.txt';
+    document.getElementById('testDownloadBtn').className = '';
+    document.getElementById('loadBtn').style.display = 'none';
+  }
+
+  /* ── Spotify API helpers ───────────────────────────────────────────── */
   function jsonOf(r) {
     return r.json().catch(function () { return {}; }).then(function (body) { return { status: r.status, body: body }; });
   }
@@ -226,11 +382,11 @@ into <code>settings.txt</code>.</p>
     });
   }
 
-  document.getElementById('clientId').value = loadState('sw_client_id');
+  clientIdEl.value = loadState('sw_client_id');
 
   /* ── Step 2: authorize ─────────────────────────────────────────────── */
   document.getElementById('authBtn').onclick = function () {
-    var clientId = document.getElementById('clientId').value.trim();
+    var clientId = clientIdEl.value.trim();
     if (!clientId) { setStatus('Enter your Client ID first.', 'err'); return; }
     saveState('sw_client_id', clientId);
 
@@ -259,7 +415,7 @@ into <code>settings.txt</code>.</p>
 
   /* ── Step 3: exchange the code, then check access ─────────────────── */
   document.getElementById('exchangeBtn').onclick = function () {
-    var clientId = document.getElementById('clientId').value.trim() || loadState('sw_client_id');
+    var clientId = clientIdEl.value.trim() || loadState('sw_client_id');
     var verifier = loadState('sw_verifier');
     var pasted   = document.getElementById('redirectUrl').value.trim();
     var code     = param(pasted, 'code');
@@ -289,12 +445,13 @@ into <code>settings.txt</code>.</p>
                   '. Codes expire quickly: redo Step 2 and paste the new URL right away.', 'err');
         return;
       }
-      showResult(settingsText(clientId, data.refresh_token), 'resultStep', 'result', 'downloadBtn');
+      showResult(settingsText(clientId, data.refresh_token), 'resultStep', 'result');
       setStatus('Token received. Checking that this account can use the app…');
       return checkAccess(data.access_token).then(function (chk) {
+        var next = canWrite ? 'Now click "Save into the widget folder" below.' : 'Now download the settings below and move the file into the widget folder.';
         setStatus((chk.ok ? 'Success!\n' : 'Token received, but something is wrong.\n') +
-                  chk.lines.join('\n') +
-                  (chk.ok ? '\nSave the settings below.' : '\nThe settings below are still valid and start working once this is fixed.'),
+                  chk.lines.join('\n') + '\n' +
+                  (chk.ok ? next : 'The settings below are still valid and start working once this is fixed.'),
                   chk.ok ? 'ok' : 'err');
       });
     }).catch(function () {
@@ -302,7 +459,20 @@ into <code>settings.txt</code>.</p>
     });
   };
 
-  /* ── Troubleshooting: test an existing settings.txt ───────────────── */
+  /* ── Troubleshooting: load and test an existing settings.txt ──────── */
+  document.getElementById('loadBtn').onclick = async function () {
+    try {
+      var dir  = await widgetFolder();
+      var text = await readSettingsFile(dir);
+      if (text === null) { setText(testEl, 'There is no settings.txt in "' + dir.name + '" yet. Do Steps 2 to 4 first.', 'err'); return; }
+      document.getElementById('testInput').value = text;
+      if (!clientIdEl.value) clientIdEl.value = parseSettings(text).spotify_client_id || '';
+      setText(testEl, 'Loaded settings.txt from "' + dir.name + '". Click "Test these settings".');
+    } catch (e) {
+      setText(testEl, describeError(e), 'err');
+    }
+  };
+
   document.getElementById('testBtn').onclick = function () {
     var cfg = parseSettings(document.getElementById('testInput').value);
     document.getElementById('testResultWrap').style.display = 'none';
@@ -336,7 +506,7 @@ into <code>settings.txt</code>.</p>
         setText(testEl, ['Token refresh: OK.'].concat(chk.lines).join('\n'), chk.ok ? 'ok' : 'err');
         if (res.body.refresh_token) {
           showResult(settingsText(cfg.spotify_client_id, res.body.refresh_token, cfg.source, cfg.poll_interval),
-                     'testResultWrap', 'testResult', 'testDownloadBtn');
+                     'testResultWrap', 'testResult');
         }
       });
     }).catch(function () {
