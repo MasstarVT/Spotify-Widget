@@ -37,6 +37,7 @@
   .err { color: #ff6b6b; font-weight: 600; }
   .ok  { color: #1DB954; font-weight: 600; }
   #status, #testStatus, #saveStatus, #testSaveStatus { white-space: pre-line; }
+  .when-helper { display: none; }
   a { color: #1DB954; }
   #authLink { display: none; margin-left: 12px; }
   ol li { margin: 6px 0; }
@@ -47,11 +48,14 @@
 <h1>Spotify Widget — one-time setup</h1>
 <p>This page gets you a <b>refresh token</b> so the OBS widgets can read your
 currently playing song straight from the Spotify API, and writes it into
-<code>settings.txt</code> for you. Open this page in your <b>normal browser</b>
-(Chrome or Edge can save the file directly; Firefox and others download it), not in OBS.</p>
+<code>settings.txt</code> for you.
+<span class="when-manual">Open this page in your <b>normal browser</b> (Chrome or Edge can save the file
+directly; Firefox and others download it), not in OBS. For a fully automatic setup, run
+<code>setup-spotify.bat</code> (Windows) or <code>setup-spotify.sh</code> (Linux/macOS) instead of opening this file.</span>
+<span class="when-helper">The setup helper is running, so everything after Step 2 happens by itself.</span></p>
 <p class="note">Since February 2026 Spotify requires the <b>app owner to have Spotify Premium</b>; without it
 the app does not work even though this page hands out a token. Refresh tokens also expire after
-<b>6 months</b>: when the widget stops picking up Spotify, run this page again.</p>
+<b>6 months</b>: when the widget stops picking up Spotify, run this setup again.</p>
 
 <div class="step">
   <h2 style="margin-top:0">Step 1 — Create a Spotify app</h2>
@@ -67,19 +71,22 @@ the app does not work even though this page hands out a token. Refresh tokens al
 <div class="step">
   <h2 style="margin-top:0">Step 2 — Authorize</h2>
   <p>Paste your Client ID and click Authorize. Spotify will ask you to approve,
-  then send you to a page that <b>fails to load</b> (that's expected: nothing is
+  <span class="when-manual">then send you to a page that <b>fails to load</b> (that's expected: nothing is
   listening on 127.0.0.1). If some page does load there, that's fine too. Either way,
-  keep that tab open for Step 3.</p>
+  keep that tab open for Step 3.</span>
+  <span class="when-helper">then bring you straight back to this page. The rest happens by itself.</span></p>
   <input type="text" id="clientId" placeholder="Client ID" spellcheck="false">
   <button id="authBtn">Authorize with Spotify</button>
   <a id="authLink" href="#" target="_blank" rel="noopener">open Spotify in a new tab</a>
 </div>
 
 <div class="step">
-  <h2 style="margin-top:0">Step 3 — Paste the URL you landed on</h2>
-  <p>From that tab, copy the <b>entire address</b> from your browser's
+  <h2 style="margin-top:0">Step 3 — <span class="when-manual">Paste the URL you landed on</span><span class="when-helper">Finishing up</span></h2>
+  <p><span class="when-manual">From that tab, copy the <b>entire address</b> from your browser's
   address bar (it starts with <span class="mono">http://127.0.0.1:8888/callback?code=…</span>)
-  and paste it here. The page then checks that Spotify actually lets this account use the app.</p>
+  and paste it here. The page then checks that Spotify actually lets this account use the app.</span>
+  <span class="when-helper">This fills itself in when Spotify brings you back, then the page checks that
+  Spotify lets this account use the app. Only if that did not happen: paste the address you landed on here.</span></p>
   <input type="text" id="redirectUrl" placeholder="http://127.0.0.1:8888/callback?code=..." spellcheck="false">
   <button id="exchangeBtn">Get refresh token</button>
   <p id="status"></p>
@@ -98,7 +105,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
   files are in it, and writes <code>settings.txt</code> there, keeping any other settings you already had.
   Chrome and Edge only; in other browsers use Download and move the file into the folder yourself.</p>
   <p class="note">The widget keeps its own copy of the token as Spotify rotates it, so you only
-  need to run this page again when you re-authorize. Each person needs their own
+  need to run this setup again when you re-authorize. Each person needs their own
   <code>settings.txt</code>: a copied one stops working after its first use and shows the other person's music.</p>
 </div>
 
@@ -132,7 +139,8 @@ the app does not work even though this page hands out a token. Refresh tokens al
   var TOKEN_URL = 'https://accounts.spotify.com/api/token';
   var API       = 'https://api.spotify.com/v1';
   var SCOPE     = 'user-read-currently-playing';   // the only permission the widgets need
-  var canWrite  = typeof window.showDirectoryPicker === 'function';   // Chrome / Edge
+  var helper    = window.SETUP_HELPER || null;     // set when served by setup-spotify.bat / .sh
+  var canWrite  = typeof window.showDirectoryPicker === 'function';   // Chrome / Edge folder access
   var statusEl  = document.getElementById('status');
   var testEl    = document.getElementById('testStatus');
   var authLink  = document.getElementById('authLink');
@@ -140,6 +148,12 @@ the app does not work even though this page hands out a token. Refresh tokens al
 
   function setText(el, text, cls) { el.textContent = text; el.className = cls || ''; }
   function setStatus(text, cls) { setText(statusEl, text, cls); }
+  function showAll(selector, show) {
+    var els = document.querySelectorAll(selector);
+    for (var i = 0; i < els.length; i++) els[i].style.display = show ? 'inline' : 'none';
+  }
+  showAll('.when-helper', !!helper);
+  showAll('.when-manual', !helper);
 
   function b64url(bytes) {
     var s = '';
@@ -214,9 +228,29 @@ the app does not work even though this page hands out a token. Refresh tokens al
     document.getElementById(areaId).value = text;
   }
 
-  /* ── writing settings.txt straight into the widget folder ─────────── */
-  // Chrome and Edge let a page write files once the user has picked a folder.
-  // The folder handle is remembered (IndexedDB) so later saves need no re-pick.
+  /* ── the setup helper (setup-spotify.bat / .sh) ────────────────────── */
+  // When this page is served by the helper on 127.0.0.1, the helper reads
+  // and writes settings.txt in its own folder: no folder picking at all.
+  async function helperRead() {
+    var r = await fetch('/settings', { cache: 'no-store' });
+    if (r.status === 200) return await r.text();
+    if (r.status === 404) return null;                 // no settings.txt yet
+    throw new Error('the setup helper answered HTTP ' + r.status);
+  }
+
+  async function helperWrite(text) {
+    var r = await fetch('/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Setup-Token': helper.token },
+      body: text
+    });
+    if (r.status !== 200) throw new Error('the setup helper answered HTTP ' + r.status);
+  }
+
+  /* ── writing settings.txt through the browser (Chrome / Edge) ─────── */
+  // Without the helper, Chrome and Edge let a page write files once the user
+  // has picked a folder. The folder handle is remembered (IndexedDB) so later
+  // saves need no re-pick.
   var DB_NAME = 'now-playing-setup', DB_STORE = 'handles', DB_KEY = 'widgetFolder';
 
   function openDb() {
@@ -299,33 +333,48 @@ the app does not work even though this page hands out a token. Refresh tokens al
   }
 
   // Wire a "Save into the widget folder" / "Download" pair for the settings
-  // text held in the textarea `areaId`.
+  // text held in the textarea `areaId`. Saves through the helper when it is
+  // running, otherwise through the browser's folder access.
   function wireSaveButtons(saveId, downloadId, areaId, statusId) {
     var saveBtn = document.getElementById(saveId);
     var area    = document.getElementById(areaId);
     var status  = document.getElementById(statusId);
     document.getElementById(downloadId).onclick = function () { download(area.value); };
-    if (!canWrite) { saveBtn.style.display = 'none'; return; }
+    if (!helper && !canWrite) { saveBtn.style.display = 'none'; return; }
     saveBtn.onclick = async function () {
-      setText(status, 'Pick the folder that holds the widget HTML files…');
+      var wanted = parseSettings(area.value);
       try {
-        var dir      = await widgetFolder();
-        var wanted   = parseSettings(area.value);
-        var existing = await readSettingsFile(dir);            // null when the folder has no settings.txt yet
-        var text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
-        await writeSettingsFile(dir, text);
+        var existing, text, where;
+        if (helper) {
+          setText(status, 'Saving…');
+          existing = await helperRead();                     // null when the folder has no settings.txt yet
+          text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
+          await helperWrite(text);
+          where = 'the widget folder';
+        } else {
+          setText(status, 'Pick the folder that holds the widget HTML files…');
+          var dir  = await widgetFolder();
+          existing = await readSettingsFile(dir);
+          text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
+          await writeSettingsFile(dir, text);
+          where = '"' + dir.name + '"';
+        }
         area.value = text;
-        setText(status, (existing === null ? 'Created' : 'Updated') + ' settings.txt in "' + dir.name +
-                        '". Add a widget to OBS (or refresh one) and play something.', 'ok');
+        setText(status, (existing === null ? 'Created' : 'Updated') + ' settings.txt in ' + where +
+                        '. Add a widget to OBS (or refresh one) and play something.' +
+                        (helper ? ' You can close the setup window now.' : ''), 'ok');
       } catch (e) {
-        setText(status, describeError(e), 'err');
+        setText(status, helper ? 'Could not save: ' + e.message + '. Use Download instead.' : describeError(e), 'err');
       }
     };
   }
 
   wireSaveButtons('saveBtn', 'downloadBtn', 'result', 'saveStatus');
   wireSaveButtons('testSaveBtn', 'testDownloadBtn', 'testResult', 'testSaveStatus');
-  if (!canWrite) {
+  if (helper) {
+    document.getElementById('saveNote').textContent =
+      'The setup helper is running, so this saves straight into the widget folder, keeping any other settings you already had.';
+  } else if (!canWrite) {
     document.getElementById('saveNote').textContent =
       'Your browser cannot write files directly (Chrome and Edge can). Download the file and move it into the folder with the widget HTML files.';
     document.getElementById('downloadBtn').textContent = 'Download settings.txt';
@@ -386,6 +435,12 @@ the app does not work even though this page hands out a token. Refresh tokens al
   }
 
   clientIdEl.value = loadState('sw_client_id');
+  if (helper && !clientIdEl.value) {
+    // Re-running the setup: start from the Client ID already in settings.txt.
+    helperRead().then(function (text) {
+      if (text && !clientIdEl.value) clientIdEl.value = parseSettings(text).spotify_client_id || '';
+    }).catch(function () {});
+  }
 
   /* ── Step 2: authorize ─────────────────────────────────────────────── */
   document.getElementById('authBtn').onclick = function () {
@@ -407,6 +462,11 @@ the app does not work even though this page hands out a token. Refresh tokens al
         '&state=' + encodeURIComponent(state) +
         '&code_challenge_method=S256' +
         '&code_challenge=' + b64url(new Uint8Array(hash));
+      if (helper) {
+        // Spotify sends the browser back to this same page; no new tab needed.
+        location.href = url;
+        return;
+      }
       authLink.href = url;
       authLink.style.display = 'inline';
       var popup = window.open(url, '_blank');
@@ -451,28 +511,41 @@ the app does not work even though this page hands out a token. Refresh tokens al
       showResult(settingsText(clientId, data.refresh_token), 'resultStep', 'result');
       setStatus('Token received. Checking that this account can use the app…');
       return checkAccess(data.access_token).then(function (chk) {
-        var next = canWrite ? 'Now click "Save into the widget folder" below.' : 'Now download the settings below and move the file into the widget folder.';
+        var next;
+        if (helper)        next = 'Saving settings.txt into the widget folder…';
+        else if (canWrite) next = 'Now click "Save into the widget folder" below.';
+        else               next = 'Now download the settings below and move the file into the widget folder.';
         setStatus((chk.ok ? 'Success!\n' : 'Token received, but something is wrong.\n') +
                   chk.lines.join('\n') + '\n' +
-                  (chk.ok ? next : 'The settings below are still valid and start working once this is fixed.'),
+                  (chk.ok ? next : 'The settings below are still valid and start working once this is fixed.' + (helper ? ' Saving them now.' : '')),
                   chk.ok ? 'ok' : 'err');
+        if (helper) document.getElementById('saveBtn').click();   // no folder to pick: save right away
       });
     }).catch(function () {
       setStatus('Network error talking to Spotify.', 'err');
     });
   };
 
+  // Served by the helper and just back from Spotify: finish automatically.
+  if (helper && location.pathname === '/callback') {
+    var returned = location.href;
+    history.replaceState(null, '', '/');
+    document.getElementById('redirectUrl').value = returned;
+    document.getElementById('exchangeBtn').click();
+  }
+
   /* ── Troubleshooting: load and test an existing settings.txt ──────── */
   document.getElementById('loadBtn').onclick = async function () {
     try {
-      var dir  = await widgetFolder();
-      var text = await readSettingsFile(dir);
-      if (text === null) { setText(testEl, 'There is no settings.txt in "' + dir.name + '" yet. Do Steps 2 to 4 first.', 'err'); return; }
+      var text, where;
+      if (helper) { text = await helperRead(); where = 'the widget folder'; }
+      else { var dir = await widgetFolder(); text = await readSettingsFile(dir); where = '"' + dir.name + '"'; }
+      if (text === null) { setText(testEl, 'There is no settings.txt in ' + where + ' yet. Do Steps 2 to 4 first.', 'err'); return; }
       document.getElementById('testInput').value = text;
       if (!clientIdEl.value) clientIdEl.value = parseSettings(text).spotify_client_id || '';
-      setText(testEl, 'Loaded settings.txt from "' + dir.name + '". Click "Test these settings".');
+      setText(testEl, 'Loaded settings.txt from ' + where + '. Click "Test these settings".');
     } catch (e) {
-      setText(testEl, describeError(e), 'err');
+      setText(testEl, helper ? 'Could not load: ' + e.message : describeError(e), 'err');
     }
   };
 
@@ -510,6 +583,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
         if (res.body.refresh_token) {
           showResult(settingsText(cfg.spotify_client_id, res.body.refresh_token, cfg.source, cfg.poll_interval),
                      'testResultWrap', 'testResult');
+          if (helper) document.getElementById('testSaveBtn').click();   // keep the folder's file current
         }
       });
     }).catch(function () {

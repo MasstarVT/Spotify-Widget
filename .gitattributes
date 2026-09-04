@@ -1,0 +1,5 @@
+# Keep scripts runnable on the platform they are for, whatever machine commits them.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf

@@ -15,3 +15,6 @@ settings.txt
 
 # Snip output, in case Snip writes into this folder
 Snip/
+
+# Python bytecode from running the setup helper
+__pycache__/

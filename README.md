@@ -13,6 +13,8 @@ All widgets share `now-playing-source.js`, which picks the source based on `sett
 
 | File | Style |
 |---|---|
+| `setup-spotify.bat`, `setup-spotify.sh` | One-click Spotify setup for Windows and Linux/macOS (run the helper, then `spotify-setup.html` does the rest) |
+| `spotify-setup.html` | The setup page itself; also works on its own, opened directly in a browser |
 | `zune-now-playing.html` | Zune: accent bar, large title, dark panel |
 | `spotify-now-playing.html` | Spotify-style card with equalizer bars |
 | `apple-music-now-playing.html` | Apple Music card, tinted from the album art |
@@ -40,11 +42,15 @@ Widgets other than Zune, Spotify, Apple Music, iPod, and Basic load their fonts 
 
 ## Spotify API Setup
 
-One-time setup, done in your normal browser (not OBS):
+One-time setup, done on your normal desktop (not in OBS):
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), log in, and click **Create app**. Name it anything, add the Redirect URI `http://127.0.0.1:8888/callback`, check **Web API**, and save.
-2. Open `spotify-setup.html` (double-click it; Chrome or Edge gives the smoothest path) and follow the steps on the page: paste your app's **Client ID**, authorize, and paste back the URL Spotify redirects you to. The page checks that Spotify lets the account use the app and shows what is playing.
-3. Click **Save into the widget folder** and pick the folder that holds the widget HTML files. The page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder for next time. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into that folder yourself. The file looks like this:
+2. **Windows:** double-click `setup-spotify.bat`. **Linux / macOS:** run `./setup-spotify.sh` (needs Python 3, which every desktop distro and macOS ships). A small window opens and your browser shows the setup page. Paste your app's **Client ID**, click **Authorize**, approve in Spotify, and you are brought straight back: the page checks that the account can use the app and writes `settings.txt` into the widget folder by itself. Close the small window when it says done.
+
+   The helper is a tiny local web server that listens only on your own computer (127.0.0.1, the address Spotify redirects to), serves only the setup page, and writes only `settings.txt`. Windows may show "Windows protected your PC" for a downloaded `.bat`: choose **More info → Run anyway**. Nothing is installed.
+
+   **Without the helper:** open `spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
+3. Either way you end up with a `settings.txt` next to the widget HTML files that looks like this:
 
    ```
    source=auto
