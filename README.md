@@ -67,19 +67,20 @@ Spotify refresh tokens are single-use: every refresh hands back a new one. The w
 
 Refresh tokens also expire after **6 months**. If the widget stops showing Spotify (it falls back to Snip, or shows "Nothing playing" while music is playing), run `spotify-setup.html` again and paste the new token into `settings.txt`. The widget notices the changed token and starts fresh.
 
-### Rate limits
+### Rate limits and the request quota
 
-Spotify counts every request your app makes in a rolling 30-second window, per app rather than per widget, and development-mode apps get a small allowance that Spotify does not publish. When it is exceeded Spotify answers 429 for a while, and that block can last from minutes to hours.
+Spotify puts two limits on a development-mode app. The first is a rate limit: every request counts in a rolling 30-second window, and a burst over the (unpublished) allowance gets 429 answers for minutes. The second is a request **quota**, counted per developer account over many hours: a widget that polled every two seconds all stream long used it up after several hours, and the 429 that follows (`"reason": "QUOTA_EXCEEDED"` in the body) can last most of a day. The quota is what bites on long streams, so the widget asks Spotify as rarely as it can without showing changes late:
 
-The widget is built so one OBS cannot reach that limit:
+- **Track ends are predicted.** Every answer says how far into the track Spotify is and how long the track is, so the widget asks again exactly when the track is due to end. A track that plays out shows its successor within about a second, with no polling in between.
+- **Fast after something happens, relaxed when nothing does.** Right after a change the widget asks every `poll_interval` (2 s by default) for 15 seconds, since a skip or pause is often followed by another, then every 4 s, and settles at `poll_interval_max` (8 s by default) while a track plays undisturbed. A mid-track skip or pause shows within that gap. While paused it relaxes to twice `poll_interval_max`, and while nothing is playing at all to 30 seconds, so an OBS left open overnight costs about 130 requests an hour.
+- **One poller per OBS.** Widgets in the same OBS share the answers: one asks Spotify, the others show what it got the moment it lands, and take over only if it stops (its scene was closed, say). Extra scenes or widget styles add no requests, and a widget that starts later shows the current track without asking at all.
+- **No wasted requests.** The access token is refreshed a minute before it expires rather than after a rejected request, and a `poll_interval` under `2000` is ignored.
+- **Hard caps.** Whatever else happens, the widgets in one OBS never send more than 20 Spotify requests in any 30 seconds or 900 in any hour. A poll that would exceed that is delayed.
+- **Backing off on 429.** Browsers cannot read Spotify's `Retry-After` header, so after a rate-limit 429 the widget waits 30 seconds, then 1, 2, 4, 8 and at most 10 minutes between attempts. After a quota 429 it waits 5, 10, 20 and then 30 minutes between attempts, since the quota takes hours to come back. Every widget in that OBS waits together, with `source=auto` Snip is used meanwhile, and if nothing is on screen the widget shows "Spotify rate limited, retrying in …" or "Spotify request quota used up, retrying in …".
 
-- **Poll interval floor.** `poll_interval` is never lower than `2000` ms (lower values are ignored). One poll is one request, so that is at most 15 requests per 30-second window, and a track change still shows within about two seconds.
-- **One poller per OBS.** Widgets in the same OBS share their polling: one asks Spotify and the others reuse its answer, so extra scenes or widget styles do not multiply the request rate.
-- **Hard cap.** Whatever else happens, the widgets in one OBS never send more than 20 Spotify requests in any 30-second window. If the cap is reached, polls are skipped until the window frees up.
-- **Slower when idle.** Once "Nothing playing" has been showing for a bit, the widget polls every third tick (every 6 seconds by default), so an OBS left open all day costs a third as much. A resume still shows within a few seconds.
-- **Backing off on 429.** Browsers are not allowed to read Spotify's `Retry-After` header, so after a 429 the widget waits 30 seconds, then 1, 2, 4, 8 and at most 10 minutes between attempts until Spotify answers normally again. Every widget in that OBS waits together, with `source=auto` Snip is used meanwhile, and if nothing is on screen the widget shows "Spotify rate limited, retrying in …".
+In numbers, measured in a simulation of the widget against a scripted Spotify: a track playing undisturbed costs about 570 requests an hour, an hour of constant skipping and pausing about 720, and an idle hour about 130. Polling every two seconds, as earlier versions did, was 1800 an hour. A streaming day with two idle hours, eight hours of music with the odd pause and skip, and four idle hours after comes to about 4,700 requests instead of 18,000.
 
-The one thing the widget cannot see is other people. The limit is per app, so if several streamers share one Client ID their requests add up: five people at the default interval are 75 requests per window, which is close to the measured ceiling. For a shared app, set `poll_interval=4000` or higher for everyone, or give each person their own app. The Troubleshooting test on `spotify-setup.html` uses three requests.
+The one thing the widget cannot see is other people. The quota is per developer account, so if several streamers share one Client ID their requests add up. For a shared app, raise `poll_interval_max` for everyone, or give each person their own app. The Troubleshooting test on `spotify-setup.html` uses three requests.
 
 ### Using it on a friend's stream (another Spotify account)
 
@@ -104,7 +105,8 @@ If an account is not on the list, Spotify answers every request with "User not r
 | `source` | `auto` (Spotify API if credentials work, else Snip files), `spotify` (API only), or `snip` (Snip files only). Not case-sensitive; anything else means `auto`. |
 | `spotify_client_id` | From your Spotify Developer app |
 | `spotify_refresh_token` | Generated by `spotify-setup.html` |
-| `poll_interval` | How often to check for track changes, in ms (default and minimum `2000`; lower values are ignored). See [Rate limits](#rate-limits) |
+| `poll_interval` | How quickly a change shows right after something happened, in ms (default and minimum `2000`; lower values are ignored). Track ends are checked on time regardless. See [Rate limits](#rate-limits-and-the-request-quota) |
+| `poll_interval_max` | The longest gap between checks while a track plays undisturbed, in ms (default `8000`; never below `poll_interval`). Raise it to use fewer requests; a mid-track skip or pause then takes up to this long to show |
 
 Lines starting with `#` are comments, and so is ` # ...` after a value.
 
@@ -120,7 +122,8 @@ Fallback order with `source=auto`: **Spotify API → Snip files**. After repeate
 | "Nothing playing / Spotify not detected" | `source=spotify` and Spotify did not answer within 3 seconds |
 | "Nothing playing / Spotify not configured" | `source=spotify` but `settings.txt` has no client ID or refresh token |
 | "Nothing playing / Spotify: this account is not added to the app" | The Spotify account is not listed under the app's User Management. See [Using it on a friend's stream](#using-it-on-a-friends-stream-another-spotify-account) |
-| "Nothing playing / Spotify rate limited, retrying in …" | Spotify's per-app request limit was exceeded. See [Rate limits](#rate-limits) |
+| "Nothing playing / Spotify rate limited, retrying in …" | Too many requests in 30 seconds, usually from another program using the same app. See [Rate limits](#rate-limits-and-the-request-quota) |
+| "Nothing playing / Spotify request quota used up, retrying in …" | The development-mode request quota for your developer account is used up; Spotify restores it after some hours. See [Rate limits](#rate-limits-and-the-request-quota) |
 | "Nothing playing / Spotify login expired: re-run spotify-setup.html" | Spotify rejected the refresh token: expired after 6 months, revoked, or copied from someone else's settings.txt |
 | "Nothing playing / Snip not detected" | `settings.txt` has no Spotify credentials (or says `source=snip`) and `Snip\Snip.txt` was not found next to the widget |
 | "Nothing playing / No settings.txt and no Snip files" | Neither file was found next to the widget. Check the file is really named `settings.txt` (Windows may have hidden a second `.txt`) and sits in the same folder as the HTML files |
@@ -235,7 +238,7 @@ The `-rgb` values are plain red, green, blue numbers (0–255) rather than hex s
 |---|---|
 | Widget position | `bottom` and `left` values on the widget's outer rule (`.zune-widget`, `.sp-widget`, `.widget`, …) |
 | Scroll area width (Zune) | `width` on `.zune-title-wrap` (default `420px`); other widgets scroll within their card width |
-| Poll interval | `poll_interval` in `settings.txt` (default `2000` ms) |
+| Poll interval | `poll_interval` and `poll_interval_max` in `settings.txt` (default `2000` and `8000` ms) |
 
 ### Paused and idle looks
 

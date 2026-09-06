@@ -19,6 +19,13 @@ spotify_client_id=
 # in OBS's browser storage, so only replace this line when you re-authorize.
 spotify_refresh_token=
 
-# How often to check for track changes, in milliseconds. 2000 is the minimum
-# (Spotify limits requests per app; see "Rate limits" in the README).
+# How quickly a change shows right after something happened (a skip, pause
+# or seek), in milliseconds. 2000 is the minimum. Track ends are predicted
+# and checked on time whatever this says.
 poll_interval=2000
+
+# The longest gap between checks while a track plays undisturbed, in
+# milliseconds (never below poll_interval). Raise it to use fewer Spotify
+# requests; a mid-track skip or pause then takes up to this long to show.
+# See "Rate limits and the request quota" in the README.
+poll_interval_max=8000

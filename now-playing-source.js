@@ -24,6 +24,18 @@
    OBS all keep working from one settings.txt. Pasting a new token into
    settings.txt starts a fresh chain.
 
+   Spotify requests are kept to a minimum. Development-mode apps have a
+   request quota counted over many hours on top of the 30-second rate
+   limit, and polling every two seconds all stream long uses it up. So:
+
+     - the widget knows when the current track ends (progress + duration)
+       and asks exactly then, so track changes still show within a second;
+     - between those, it asks every poll_interval right after something
+       happened (a skip, pause, or seek: the moment more may follow) and
+       relaxes to poll_interval_max while a track plays undisturbed;
+     - while nothing is playing it slows down to one request per 30 s;
+     - widgets in the same OBS share one poller and its answers.
+
    Works on file:// inside OBS's browser source (XHR with status 0).
    ──────────────────────────────────────────────────────────────────────── */
 (function () {
@@ -36,23 +48,45 @@
   var PLAYER_URL    = 'https://api.spotify.com/v1/me/player/currently-playing?additional_types=track,episode';
   var STORE_KEY     = 'now-playing-spotify-auth';
 
-  var REQUEST_TIMEOUT_MS = 10000; // give up on a Spotify request after this long
-  var SPOTIFY_RETRY_MS   = 30000; // how long to back off after repeated failures
-  var PLACEHOLDER_MS     = 3000;  // show the placeholder if nothing answers by then
-  var IDLE_TICKS         = 3;     // "nothing playing" polls before switching to the placeholder
-  var MIN_ART_WIDTH      = 160;   // smallest Spotify cover that still looks sharp in a widget
-  var RATE_LIMIT_MIN_MS  = 30000; // first wait after a 429 (Retry-After is not readable from a browser)
+  var REQUEST_TIMEOUT_MS = 10000;  // give up on a Spotify request after this long
+  var SPOTIFY_RETRY_MS   = 30000;  // how long to back off after repeated failures
+  var PLACEHOLDER_MS     = 3000;   // show the placeholder if nothing answers by then
+  var IDLE_PAUSE_MS      = 6000;   // "nothing playing" for this long marks the shown track paused
+  var MIN_ART_WIDTH      = 160;    // smallest Spotify cover that still looks sharp in a widget
+  var TOKEN_MARGIN_MS    = 60000;  // refresh the access token this long before it expires
+
+  /* polling schedule */
+  var MIN_POLL_MS        = 2000;   // poll_interval floor
+  var DEFAULT_MAX_POLL_MS = 8000;  // poll_interval_max default: gap while a track plays undisturbed
+  var IDLE_MAX_POLL_MS   = 30000;  // gap while nothing is playing
+  var RAMP_STEP_MS       = 15000;  // after a change: poll_interval for 15 s, twice that for 30 s, ...
+  var END_LEAD_MS        = 800;    // ask this long after the track is due to end (Spotify lags a little)
+  var MAX_END_POLLS      = 3;      // stop chasing the end if Spotify keeps reporting the track past it
+  var SEEK_TOLERANCE_MS  = 3000;   // progress this far from the expected position counts as a seek
+  var MIN_GAP_MS         = 500;    // never two requests closer than this
+
+  /* rate limits and quota */
+  var RATE_LIMIT_MIN_MS  = 30000;  // first wait after a 429 (Retry-After is not readable from a browser)
   var RATE_LIMIT_MAX_MS  = 600000; // longest wait between attempts while rate limited
-  var MIN_POLL_MS        = 2000;  // poll_interval floor: 15 requests per 30 s window at most
+  var QUOTA_MIN_MS       = 300000; // first wait after a 429 that says the quota is used up
+  var QUOTA_MAX_MS       = 1800000; // longest wait between attempts while the quota is used up
+  var RETRY_AFTER_MAX_MS = 3600000; // cap on a Retry-After header, should Spotify ever expose it
+  var RATE_WINDOW_MS     = 30000;  // Spotify counts requests over a rolling 30 s window
   var MAX_REQUESTS_PER_WINDOW = 20; // hard cap per OBS per 30 s, whatever settings.txt says
-  var RATE_WINDOW_MS     = 30000; // Spotify counts requests over a rolling 30 s window
-  var IDLE_POLL_EVERY    = 3;     // while nothing has played for a while, poll every Nth tick
+  var HOUR_MS            = 3600000;
+  var MAX_REQUESTS_PER_HOUR = 900; // hard cap per OBS per hour (the schedule above stays well under)
+
+  /* shared polling between widgets in one OBS */
+  var FOLLOW_DELAY_MS    = 400;    // look for the poller's answer this long after it was due
+  var FOLLOW_RECHECK_MS  = 500;    // and again this often while its request is in flight
+  var TAKEOVER_GRACE_MS  = 2500;   // a poller this late is presumed gone (scene closed, OBS restarted)
 
   var settings = {
     source: 'auto',
     spotify_client_id: '',
     spotify_refresh_token: '',
-    poll_interval: 2000,
+    poll_interval: MIN_POLL_MS,
+    poll_interval_max: DEFAULT_MAX_POLL_MS,
   };
 
   var callback  = null;
@@ -68,12 +102,12 @@
   var polling          = false;
   var spotifyFails     = 0;
   var spotifyDeadUntil = 0;      // retry Spotify after this (repeated failures)
-  var spotifyWaitUntil = 0;      // don't poll before this (429 rate limit)
+  var spotifyWaitUntil = 0;      // don't poll before this (429, or shared from another widget)
   var rateLimitMs      = 0;      // current 429 wait; doubles while the limit persists
   var instanceId       = Math.random().toString(36).slice(2);   // this widget, for shared polling
-  var spotifyIdleTicks = 0;
-  var idlePolls        = 0;      // ticks seen while the idle placeholder is up
   var spotifyError     = '';     // last hard failure, shown in the placeholder while nothing plays
+  var spotifyTimer     = null;   // pending step of the Spotify schedule
+  var appliedAt        = 0;      // answeredAt of the shared answer this widget has shown
 
   /* Snip state */
   var lastSnipRaw   = null;
@@ -107,14 +141,15 @@
            artSrc: null, playing: false, placeholder: true });
   }
 
-  // Called by a source that is reachable but has nothing to show. If a real
-  // track is on screen it stays and is marked paused after IDLE_TICKS polls:
-  // Spotify answers 204 once a paused device goes inactive, and Snip blanks
-  // its file while paused, so "Nothing playing" would be wrong there. The
-  // placeholder is only used while no track has been shown yet.
-  function idle(ticks) {
+  // Called by a source that is reachable but has nothing to show, with how
+  // long that has been the case. If a real track is on screen it stays and
+  // is marked paused after IDLE_PAUSE_MS: Spotify answers 204 once a paused
+  // device goes inactive, and Snip blanks its file while paused, so
+  // "Nothing playing" would be wrong there. The placeholder is only used
+  // while no track has been shown yet.
+  function idle(forMs) {
     if (lastTrack && !lastTrack.placeholder) {
-      if (ticks >= IDLE_TICKS && lastTrack.playing) {
+      if (forMs >= IDLE_PAUSE_MS && lastTrack.playing) {
         lastTrack.playing = false;
         emit(lastTrack);
       }
@@ -141,6 +176,7 @@
   function spotifyFailed(reason) {
     spotifyError = reason;
     markSpotifyDown();
+    writePlayer({ waitUntil: spotifyDeadUntil, error: reason });
     if (!lastTrack || lastTrack.placeholder) emitPlaceholder(reason);
   }
 
@@ -159,9 +195,9 @@
           if (eq === -1) return;
           var key = line.slice(0, eq).trim().toLowerCase();
           var val = line.slice(eq + 1).replace(/\s#.*$/, '').trim();   // " # comment" after a value
-          if (key === 'poll_interval') {
+          if (key === 'poll_interval' || key === 'poll_interval_max') {
             var n = parseInt(val, 10);
-            if (n >= MIN_POLL_MS) settings.poll_interval = n;         // below the floor: keep the default
+            if (n >= MIN_POLL_MS) settings[key] = n;                  // below the floor: keep the default
           } else if (key === 'source') {
             val = val.toLowerCase();
             if (val === 'auto' || val === 'spotify' || val === 'snip') settings.source = val;
@@ -170,12 +206,17 @@
           }
         });
       }
+      if (settings.poll_interval_max < settings.poll_interval) settings.poll_interval_max = settings.poll_interval;
       done();
     });
   }
 
   function spotifyConfigured() {
     return !!(settings.spotify_client_id && settings.spotify_refresh_token);
+  }
+
+  function wantSpotify() {
+    return spotifyConfigured() && settings.source !== 'snip';
   }
 
   /* ── token storage (shared by every widget in the same OBS) ─────────── */
@@ -207,25 +248,35 @@
     // recovers when Spotify or the network comes up later.
     spotifyDeadUntil = Date.now() + SPOTIFY_RETRY_MS;
     spotifyFails     = 0;
-    spotifyIdleTicks = 0;
     accessToken      = null;
     lastSnipRaw      = null;   // re-read Snip from scratch so the fallback shows the current track
   }
 
   /* ── Spotify Web API ────────────────────────────────────────────────── */
 
+  // Pick up a token another widget refreshed, and drop ours when it is
+  // about to expire, so the next poll is never wasted on a 401.
+  function syncAccessToken() {
+    var stored = readStore(), now = Date.now();
+    if (stored && stored.access_token && stored.access_token !== staleAccessToken &&
+        stored.expires_at > now + TOKEN_MARGIN_MS) {
+      accessToken = stored.access_token;
+    } else if (stored && stored.access_token === accessToken) {
+      accessToken = null;                    // ours, and expiring
+    }
+    return !!accessToken;
+  }
+
   function refreshAccessToken(done) {
     if (refreshing) return;
 
     // Another widget in this OBS may already have refreshed: reuse its tokens.
-    var stored = readStore();
-    if (stored && stored.access_token && stored.access_token !== staleAccessToken &&
-        stored.expires_at > Date.now() + 30000) {
-      accessToken  = stored.access_token;
+    if (syncAccessToken()) {
       spotifyFails = 0;
       if (done) done(true);
       return;
     }
+    var stored = readStore();
     if (stored && stored.refresh_token) refreshToken = stored.refresh_token;
     var usedToken = refreshToken;
 
@@ -264,7 +315,7 @@
         var s2 = readStore();
         if (s2 && s2.refresh_token && s2.refresh_token !== usedToken) {
           // Another widget rotated the token while this refresh was in
-          // flight; the next tick picks up its tokens from storage.
+          // flight; the next attempt picks up its tokens from storage.
         } else {
           // Expired (6 months), revoked, or already used from another copy
           // of settings.txt: only a new login fixes this.
@@ -322,9 +373,11 @@
 
   /* ── shared polling: several widgets in one OBS make one request ────── */
 
-  // Rate limits are per app, so widgets in the same OBS share the last player
-  // answer through localStorage. Whoever polled last keeps polling; the others
-  // reuse its answer and only take over when it stops updating.
+  // Rate limits are per app, so widgets in the same OBS share one poller
+  // through localStorage. The record holds who polls (owner), when its
+  // request started (at) and finished (doneAt), the last good answer
+  // (status, text, answeredAt, state) and when the next request is due
+  // (nextAt). The others show its answers and only take over when it stops.
   function playerKey() {
     return STORE_KEY + ':player:' + settings.spotify_refresh_token;
   }
@@ -341,48 +394,172 @@
     try { localStorage.setItem(playerKey(), JSON.stringify(p)); } catch (e) { /* storage unavailable */ }
   }
 
-  // A 429 seen by any widget parks all of them.
+  // A 429 or a hard failure seen by any widget parks all of them, with the
+  // same message. Returns the shared record.
   function syncSharedWait() {
     var shared = readPlayer();
-    if (shared && shared.waitUntil > spotifyWaitUntil) spotifyWaitUntil = shared.waitUntil;
+    if (shared && shared.waitUntil > spotifyWaitUntil) {
+      spotifyWaitUntil = shared.waitUntil;
+      lastSnipRaw      = null;               // let Snip take over meanwhile
+      if (shared.error) {
+        spotifyError = shared.error;
+        if ((!lastTrack || lastTrack.placeholder) && !(lastTrack && lastTrack.artist === shared.error)) {
+          emitPlaceholder(shared.error);
+        }
+      }
+    }
     return shared;
   }
 
-  // Hard cap: never more than MAX_REQUESTS_PER_WINDOW Spotify requests per
-  // rolling window from this OBS, counted across all widgets, whatever the
-  // settings say. Registers the request when it returns true.
-  function underBudget() {
+  // Hard caps: never more than MAX_REQUESTS_PER_WINDOW Spotify requests per
+  // rolling 30 s, or MAX_REQUESTS_PER_HOUR per hour, from this OBS, counted
+  // across all widgets, whatever the settings say. Returns how long to wait,
+  // and registers the request when that is 0.
+  function budgetWaitMs() {
     var key = STORE_KEY + ':requests:' + settings.spotify_refresh_token;
     var now = Date.now(), stamps = [];
     try { stamps = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { /* none yet */ }
-    stamps = stamps.filter(function (t) { return now - t < RATE_WINDOW_MS; });
-    if (stamps.length >= MAX_REQUESTS_PER_WINDOW) return false;
+    stamps = stamps.filter(function (t) { return now - t < HOUR_MS; });
+    var wait = 0;
+    if (stamps.length >= MAX_REQUESTS_PER_HOUR) wait = stamps[stamps.length - MAX_REQUESTS_PER_HOUR] + HOUR_MS - now;
+    var inWindow = stamps.filter(function (t) { return now - t < RATE_WINDOW_MS; });
+    if (inWindow.length >= MAX_REQUESTS_PER_WINDOW) {
+      wait = Math.max(wait, inWindow[inWindow.length - MAX_REQUESTS_PER_WINDOW] + RATE_WINDOW_MS - now);
+    }
+    if (wait > 0) return Math.min(Math.max(wait, MIN_GAP_MS), IDLE_MAX_POLL_MS);
     stamps.push(now);
     try { localStorage.setItem(key, JSON.stringify(stamps)); } catch (e) { /* storage unavailable */ }
-    return true;
+    return 0;
+  }
+
+  /* ── Spotify schedule ───────────────────────────────────────────────── */
+
+  function scheduleSpotify(at) {
+    if (spotifyTimer !== null) clearTimeout(spotifyTimer);
+    spotifyTimer = setTimeout(spotifyStep, Math.max(0, at - Date.now()));
+  }
+
+  // Gap between requests: poll_interval right after something changed, then
+  // twice that, four times, ... up to `cap` as the situation settles.
+  function rampGap(sinceChange, cap) {
+    var gap = settings.poll_interval, step = RAMP_STEP_MS;
+    while (sinceChange >= step && gap < cap) {
+      gap  = Math.min(gap * 2, cap);
+      step *= 2;
+    }
+    return Math.min(gap, cap);
+  }
+
+  // Compact description of an answer, compared with the previous one to see
+  // whether anything happened (new track, play/pause, seek), and kept in the
+  // shared record so a widget that takes over continues the same schedule.
+  function nextState(status, data, prev, now) {
+    var st = { kind: 'idle', id: null, playing: false, progress: 0, duration: 0,
+               at: now, changedAt: now, endPolls: 0, endDue: false };
+    if (status === 200 && data && data.item) {
+      st.kind     = 'track';
+      st.id       = data.item.id || data.item.uri || data.item.name || '?';
+      st.playing  = !!data.is_playing;
+      st.progress = data.progress_ms || 0;
+      st.duration = data.item.duration_ms || 0;
+    } else if (status === 200) {
+      st.kind = 'other';                     // ad break or unknown item type
+    }
+    if (!prev) return st;
+
+    var changed = prev.kind !== st.kind || prev.id !== st.id || prev.playing !== st.playing;
+    if (!changed && st.kind === 'track' && st.progress !== prev.progress) {
+      var expected = prev.progress + (prev.playing ? now - prev.at : 0);
+      if (Math.abs(st.progress - expected) > SEEK_TOLERANCE_MS) changed = true;   // seek, or repeat-one restart
+    }
+    // A paused device going inactive is Spotify's doing, not the user's:
+    // keep relaxing rather than polling fast again.
+    if (changed && st.kind === 'idle' && prev.kind === 'track' && !prev.playing) changed = false;
+    if (!changed) {
+      st.changedAt = prev.changedAt;
+      st.endPolls  = prev.endDue ? prev.endPolls + 1 : prev.endPolls;   // resets on the next change
+    }
+    return st;
+  }
+
+  // When to ask next: at the ramped gap, or exactly when the playing track
+  // is due to end, whichever comes first. The gap grows to poll_interval_max
+  // while a track plays, twice that while it stays paused (only a resume
+  // can follow), and IDLE_MAX_POLL_MS while nothing is playing at all.
+  function nextPollAt(st, now) {
+    var cap = st.kind === 'idle' ? IDLE_MAX_POLL_MS
+            : st.kind === 'track' && !st.playing ? Math.min(settings.poll_interval_max * 2, IDLE_MAX_POLL_MS)
+            : settings.poll_interval_max;
+    var gap = rampGap(now - st.changedAt, cap);
+    st.endDue = false;
+    if (st.kind === 'track' && st.playing && st.duration > 0 && st.endPolls < MAX_END_POLLS) {
+      var endIn = st.duration - st.progress + END_LEAD_MS;
+      if (endIn < gap) {
+        gap = Math.max(endIn, MIN_GAP_MS);
+        st.endDue = true;
+      }
+    }
+    return now + gap;
+  }
+
+  // One step of the schedule: show what the shared poller found, wait for
+  // its next answer, or poll ourselves.
+  function spotifyStep() {
+    spotifyTimer = null;
+    if (!wantSpotify()) return;
+    var shared = syncSharedWait();
+    var now = Date.now();
+    var waitUntil = Math.max(spotifyWaitUntil, spotifyDeadUntil);
+    if (now < waitUntil) {
+      scheduleSpotify(waitUntil + (shared && shared.owner && shared.owner !== instanceId ? FOLLOW_DELAY_MS : 0));
+      return;
+    }
+    if (shared && shared.owner && shared.owner !== instanceId) {
+      var inFlight = shared.at > (shared.doneAt || 0);
+      var live = inFlight
+        ? now - shared.at < REQUEST_TIMEOUT_MS + TAKEOVER_GRACE_MS
+        : shared.nextAt > 0 && now < shared.nextAt + TAKEOVER_GRACE_MS;
+      if (live) {
+        if (shared.answeredAt > appliedAt && shared.state) {
+          appliedAt = shared.answeredAt;
+          var data = null;
+          if (shared.status === 200) { try { data = JSON.parse(shared.text); } catch (e) { /* malformed */ } }
+          render(shared.status, data, shared.state);
+        }
+        scheduleSpotify(inFlight ? now + FOLLOW_RECHECK_MS
+                                 : Math.max(shared.nextAt + FOLLOW_DELAY_MS, now + FOLLOW_RECHECK_MS));
+        return;
+      }
+      // The poller is gone (its scene was closed, or OBS restarted): take over.
+    }
+    pollSpotify();
   }
 
   function pollSpotify() {
-    var shared = syncSharedWait();
-    if (Date.now() < spotifyWaitUntil) return;
-    if (!accessToken) {
-      // Poll as soon as a token is available rather than waiting a tick.
-      refreshAccessToken(function (ok) { if (ok) pollSpotify(); });
-      return;
-    }
-    if (shared && shared.owner && shared.owner !== instanceId &&
-        Date.now() - shared.at < settings.poll_interval * 1.5) {
-      // Another widget is polling: reuse its latest answer (none yet right
-      // after it claimed its first poll; ours comes next tick).
-      if (shared.status !== undefined) handlePlayerResponse(shared.status, shared.text, null);
-      return;
-    }
     if (polling) return;
-    if (!underBudget()) return;
+    var now = Date.now();
+    // Claim the poll before anything else, so widgets that wake up while the
+    // token refresh or the request is in flight wait for the answer instead
+    // of asking Spotify too.
+    writePlayer({ owner: instanceId, at: now });
+    if (!syncAccessToken()) {
+      refreshAccessToken(function (ok) {
+        if (ok) { pollSpotify(); return; }
+        var retryAt = Math.max(spotifyWaitUntil, spotifyDeadUntil, Date.now() + settings.poll_interval);
+        writePlayer({ doneAt: Date.now(), nextAt: retryAt });
+        scheduleSpotify(retryAt);
+        if (settings.source === 'auto') pollSnip();   // fall back without waiting a tick
+      });
+      return;
+    }
+    var budgetWait = budgetWaitMs();
+    if (budgetWait > 0) {
+      writePlayer({ doneAt: now, nextAt: now + budgetWait });
+      scheduleSpotify(now + budgetWait);
+      return;
+    }
     polling = true;
-    // Claim the poll before sending, so widgets whose tick lands while this
-    // request is in flight reuse it instead of asking Spotify too.
-    writePlayer({ owner: instanceId, at: Date.now() });
+    writePlayer({ at: now });
     var xhr = new XMLHttpRequest();
     xhr.open('GET', PLAYER_URL, true);
     xhr.timeout = REQUEST_TIMEOUT_MS;
@@ -390,33 +567,44 @@
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
       polling = false;
+      var t = Date.now();
       if (xhr.status === 200 || xhr.status === 204) {
-        writePlayer({ status: xhr.status, text: xhr.status === 200 ? xhr.responseText : '' });
+        var data = null;
+        if (xhr.status === 200) { try { data = JSON.parse(xhr.responseText); } catch (e) { /* malformed */ } }
+        var prev = readPlayer();
+        var st = nextState(xhr.status, data, prev && prev.state, t);
+        var nextAt = nextPollAt(st, t);
+        writePlayer({ status: xhr.status, text: xhr.status === 200 ? xhr.responseText : '',
+                      doneAt: t, answeredAt: t, nextAt: nextAt, state: st, error: '' });
+        appliedAt = t;
+        render(xhr.status, data, st);
+        scheduleSpotify(nextAt);
+        return;
       }
-      handlePlayerResponse(xhr.status, xhr.responseText, xhr);
+      handlePlayerError(xhr.status, xhr.responseText, xhr);
+      var retryAt = Math.max(spotifyWaitUntil, spotifyDeadUntil,
+                             accessToken ? t + settings.poll_interval : t);   // 401: refresh and ask again now
+      writePlayer({ doneAt: t, nextAt: retryAt });
+      scheduleSpotify(retryAt);
     };
-    try { xhr.send(); } catch (e) { polling = false; spotifyFails++; }
+    try { xhr.send(); } catch (e) {
+      polling = false;
+      spotifyFails++;
+      writePlayer({ doneAt: Date.now(), nextAt: Date.now() + settings.poll_interval });
+      scheduleSpotify(Date.now() + settings.poll_interval);
+    }
   }
 
-  function handlePlayerResponse(status, text, xhr) {
-    if (status === 200 && text) {
-      spotifyFails = 0;
-      spotifyError = '';
-      rateLimitMs  = 0;
-      var data = null;
-      try { data = JSON.parse(text); } catch (e) { /* malformed */ }
-      if (data && data.item) {
-        spotifyIdleTicks = 0;
-        emit(spotifyTrack(data));
-      } else {
-        idle(++spotifyIdleTicks);            // ad break or unknown item type
-      }
-    } else if (status === 204) {
-      spotifyFails = 0;                      // reachable, nothing playing
-      spotifyError = '';
-      rateLimitMs  = 0;
-      idle(++spotifyIdleTicks);
-    } else if (status === 403) {
+  function render(status, data, st) {
+    spotifyFails = 0;
+    spotifyError = '';
+    rateLimitMs  = 0;
+    if (st.kind === 'track') emit(spotifyTrack(data));
+    else idle(Date.now() - st.changedAt);      // nothing playing, ad break, or unknown item type
+  }
+
+  function handlePlayerError(status, text, xhr) {
+    if (status === 403) {
       // A development-mode app only serves accounts the owner listed under
       // User Management in the Developer Dashboard.
       var msg = '';
@@ -425,10 +613,10 @@
         ? 'Spotify: this account is not added to the app'
         : 'Spotify: ' + (msg || 'access denied'));
     } else if (status === 401) {
-      staleAccessToken = accessToken;        // expired: refresh on next tick
+      staleAccessToken = accessToken;        // expired: refresh right away
       accessToken = null;
     } else if (status === 429) {
-      rateLimited(xhr);
+      rateLimited(xhr, text);
     } else {
       spotifyFails++;
       if (spotifyFails >= 5) {
@@ -437,22 +625,29 @@
     }
   }
 
-  // Spotify limits requests per app over a rolling 30 s window. Browsers cannot
-  // read its Retry-After header (Spotify does not expose it to scripts), so
-  // wait in growing steps instead, and make every widget in this OBS wait too.
-  function rateLimited(xhr) {
-    var header = xhr ? parseInt(xhr.getResponseHeader('Retry-After'), 10) : 0;
-    var waitMs = header > 0 ? header * 1000
-               : rateLimitMs ? Math.min(rateLimitMs * 2, RATE_LIMIT_MAX_MS) : RATE_LIMIT_MIN_MS;
+  // Spotify limits requests per app over a rolling 30 s window, and gives
+  // development-mode apps a request quota on top, counted over many hours
+  // ("reason": "QUOTA_EXCEEDED" in the 429 body). Browsers cannot read its
+  // Retry-After header (Spotify does not expose it to scripts), so wait in
+  // growing steps instead, and make every widget in this OBS wait too.
+  function rateLimited(xhr, text) {
+    var reason = '';
+    try { reason = JSON.parse(text).error.reason || ''; } catch (e) { /* no body */ }
+    var quota = /quota/i.test(reason);
+    var minMs = quota ? QUOTA_MIN_MS : RATE_LIMIT_MIN_MS;
+    var maxMs = quota ? QUOTA_MAX_MS : RATE_LIMIT_MAX_MS;
+    var header = 0;
+    try { header = parseInt(xhr.getResponseHeader('Retry-After'), 10); } catch (e) { /* not exposed */ }
+    var waitMs = header > 0 ? Math.min(header * 1000, RETRY_AFTER_MAX_MS)
+               : rateLimitMs ? Math.min(rateLimitMs * 2, maxMs) : minMs;
     rateLimitMs      = waitMs;
     spotifyWaitUntil = Date.now() + waitMs;
-    spotifyIdleTicks = 0;
     lastSnipRaw      = null;                 // let Snip take over meanwhile
-    writePlayer({ waitUntil: spotifyWaitUntil });
-    var reason = 'Spotify rate limited, retrying in ' +
+    var msg = (quota ? 'Spotify request quota used up, retrying in ' : 'Spotify rate limited, retrying in ') +
       (waitMs < 60000 ? Math.round(waitMs / 1000) + ' s' : Math.round(waitMs / 60000) + ' min');
-    spotifyError = reason;
-    if (!lastTrack || lastTrack.placeholder) emitPlaceholder(reason);
+    spotifyError = msg;
+    writePlayer({ waitUntil: spotifyWaitUntil, error: msg });
+    if (!lastTrack || lastTrack.placeholder) emitPlaceholder(msg);
   }
 
   /* ── Snip files ─────────────────────────────────────────────────────── */
@@ -501,7 +696,7 @@
       if (!raw.trim()) {
         // Missing file: keep what is shown (the startup placeholder explains
         // "Snip not detected"). Empty file: Snip is running but paused/stopped.
-        if (ok) idle(++snipIdleTicks);
+        if (ok) idle(++snipIdleTicks * settings.poll_interval);
         return;
       }
       snipIdleTicks = 0;
@@ -524,19 +719,28 @@
 
   /* ── main loop ──────────────────────────────────────────────────────── */
 
+  // Snip is read on a fixed interval (local files, no limits). Spotify runs
+  // on its own schedule (see above); this tick only restarts that schedule
+  // if it ever stalls, and reads Snip while Spotify is down or rate limited.
   function tick() {
-    var wantSpotify = spotifyConfigured() && settings.source !== 'snip';
-    if (wantSpotify) syncSharedWait();
+    var spotify = wantSpotify();
+    if (spotify) syncSharedWait();
     var now = Date.now();
-    if (wantSpotify && now >= spotifyDeadUntil && now >= spotifyWaitUntil) {
-      // Nothing has played for a while: poll less often. A resume still shows
-      // within a few seconds, and an OBS left open all day costs a third.
-      var idleShown = lastTrack && lastTrack.placeholder && !lastTrack.artist;
-      if (idleShown) { if (++idlePolls % IDLE_POLL_EVERY !== 0) return; } else idlePolls = 0;
-      pollSpotify();
+    if (spotify && now >= spotifyDeadUntil && now >= spotifyWaitUntil) {
+      if (spotifyTimer === null && !polling && !refreshing) scheduleSpotify(now);
     } else if (settings.source !== 'spotify') {
       pollSnip();
     }
+  }
+
+  // Another widget's answer landed (or it claimed the poll): react now
+  // rather than at the next check. Only browsers that share storage between
+  // pages deliver this; the timed checks cover the rest.
+  function onStorage(e) {
+    if (!e || e.key !== playerKey() || !wantSpotify()) return;
+    var shared = readPlayer();
+    if (shared && shared.owner === instanceId) return;
+    scheduleSpotify(Date.now());
   }
 
   window.NowPlayingSource = {
@@ -549,11 +753,9 @@
       }, PLACEHOLDER_MS);
       loadSettings(function () {
         refreshToken = settings.spotify_refresh_token;
-        if (spotifyConfigured() && settings.source !== 'snip') {
-          refreshAccessToken(function (ok) {
-            if (ok) pollSpotify();
-            else if (settings.source === 'auto') pollSnip();   // fall back without waiting a tick
-          });
+        if (wantSpotify()) {
+          try { window.addEventListener('storage', onStorage); } catch (e) { /* no storage events */ }
+          spotifyStep();                     // shows a shared answer at once, or polls
         } else {
           tick();
         }
