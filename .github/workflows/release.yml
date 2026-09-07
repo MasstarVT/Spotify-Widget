@@ -84,6 +84,13 @@ jobs:
           git -c core.autocrlf=true archive --format=zip -o Widget.zip HEAD
           mkdir -p build
           git -c core.autocrlf=true archive --format=tar HEAD | tar -x -C build
+          # The site also serves the widget under the names of the files from
+          # before the looks were merged (zune-now-playing.html, ...), so an
+          # installed copy of one of those updates itself into it and, by its
+          # file name, keeps showing that look. Site only, not the zip.
+          for t in $(grep -o '<template data-theme="[a-z0-9-]*"' build/widget-now-playing.html | sed 's/.*="//;s/"$//'); do
+            cp build/widget-now-playing.html "build/$t-now-playing.html"
+          done
           cp Widget.zip build/Widget.zip
           echo "{\"version\":\"${{ steps.tag.outputs.tag }}\"}" > build/version.json
           grep -m1 'WIDGET_VERSION =' build/now-playing-source.js

@@ -1,8 +1,16 @@
-# Copy this file to settings.txt (same folder as the widget HTML files)
-# and fill in your Spotify details. Without a settings.txt the widgets
-# behave exactly as before, reading Snip/Snip.txt.
+# Copy this file to settings.txt (same folder as widget-now-playing.html)
+# and fill in your Spotify details. Without a settings.txt the widget
+# behaves exactly as before, reading Snip/Snip.txt.
 #
 # Lines starting with # are comments, and so is " # ..." after a value.
+
+# How the widget looks (not case-sensitive). One of:
+#   zune, spotify, apple-music, ipod, xbox, basic, minimal-rect,
+#   minimal-square, candy, pixel, space
+# OBS shows the new look when the browser source next loads (right-click
+# it > Refresh). For one scene with a different look, add ?theme=candy to
+# the page address of that browser source (URL mode, file:///...).
+theme=zune
 
 # Where track info comes from (not case-sensitive):
 #   auto    = use the Spotify API if the credentials below work,
@@ -31,18 +39,18 @@ poll_interval=2000
 # See "Rate limits and the request quota" in the README.
 poll_interval_max=8000
 
-# ── Looks (optional) ─────────────────────────────────────────────────────
+# ── Colours, sizes, position (optional) ──────────────────────────────────
 # Any --name=value line sets one of the widget's colour, size or position
-# variables (the :root block at the top of each widget file lists them) and
-# lives here, so it survives updates. Put a widget's name in front to change
-# that widget only. Remove the # in front of a line to use it.
+# variables (the blocks at the top of widget-now-playing.html list them for
+# each look) and lives here, so it survives updates. Put a look's name in
+# front to change that look only. Remove the # in front of a line to use it.
 #--title-size=40px
 #--bottom=60px
 #zune.--accent-rgb=0, 200, 255
 #spotify.--green=#ff4500
 
 # ── Updates ──────────────────────────────────────────────────────────────
-# When a widget loads it checks for a newer release and runs that instead,
+# When the widget loads it checks for a newer release and runs that instead,
 # keeping this file and your colours. off = always run the files as they are.
 auto_update=on
 # update_url=https://masstarvt.github.io/Spotify-Widget/   # only for a fork

@@ -12,8 +12,11 @@ the terminal to stop it.
 
 Started by update-widget.sh (--update): downloads the newest release and
 replaces the files in the widget folder. settings.txt is never touched, the
-colour block (:root) at the top of each widget file keeps your values, and
-every file that is replaced is copied to backup/<version>/ first.
+value blocks at the top of the widget file (:root and each look's block)
+keep your values, files from before the looks were merged into one page
+(zune-now-playing.html, ...) are refreshed in place so OBS can keep
+pointing at them, and every file that is replaced is copied to
+backup/<version>/ first.
 """
 import argparse
 import http.server
@@ -107,12 +110,13 @@ def explain(e):
 
 # ── update ─────────────────────────────────────────────────────────────────
 
-def merge_root(old, new):
-    """Carry the values of the old file's :root block (the customisation
-    block at the top of every widget) into the new file: same names take
-    the old value, names the new file does not know are added."""
-    pat = re.compile(r':root\s*\{[^}]*\}')
-    mo, mn = pat.search(old), pat.search(new)
+def merge_block(old, new, old_selector, new_selector):
+    """Carry the values of one block (":root", or a look's [data-theme="..."]
+    block at the top of the widget file) of the old file into a block of the
+    new file: same names take the old value, names the new file does not
+    know are added."""
+    mo = re.search(re.escape(old_selector) + r'\s*\{[^}]*\}', old)
+    mn = re.search(re.escape(new_selector) + r'\s*\{[^}]*\}', new)
     if not mo or not mn:
         return new
     eol = '\r\n' if '\r\n' in new else '\n'
@@ -126,6 +130,29 @@ def merge_root(old, new):
         else:
             block = block[:-1].rstrip() + eol + '    %s: %s;' % (name, val) + eol + '  }'
     return new[:mn.start()] + block + new[mn.end():]
+
+
+def looks_of(widget):
+    """The looks a widget-now-playing.html has (its <template data-theme="..."> tags)."""
+    return re.findall(r'<template data-theme="([a-z0-9-]+)"', widget)
+
+
+def merge_widget(old, new, name):
+    """Carry the values of a widget file across an update: its :root block
+    and, in widget-now-playing.html, each look's block. A file from before
+    the looks were merged (zune-now-playing.html, ...) holds one look's
+    values in its :root: those become that look's values in the new file."""
+    looks = looks_of(new)
+    if '[data-theme=' not in old:
+        stem = re.sub(r'-now-playing\.html$', '', name, flags=re.I)
+        if stem in looks:
+            return merge_block(old, new, ':root', '[data-theme="%s"]' % stem)
+        return merge_block(old, new, ':root', ':root')
+    out = merge_block(old, new, ':root', ':root')
+    for t in looks:
+        sel = '[data-theme="%s"]' % t
+        out = merge_block(old, out, sel, sel)
+    return out
 
 
 def update(source=None):
@@ -199,7 +226,7 @@ def update(source=None):
             shutil.copy2(dest, os.path.join(backup, *parts))
             if name.endswith('-now-playing.html'):
                 new_text = data.decode('utf-8', 'replace')
-                merged = merge_root(old.decode('utf-8', 'replace'), new_text)
+                merged = merge_widget(old.decode('utf-8', 'replace'), new_text, name)
                 if merged != new_text:
                     kept += 1
                 data = merged.encode('utf-8')
@@ -207,6 +234,29 @@ def update(source=None):
         with open(dest, 'wb') as f:
             f.write(data)
         replaced += 1
+
+    # Files from before the looks were merged into widget-now-playing.html
+    # (zune-now-playing.html, ...) that OBS may still point at: refresh each
+    # one into a copy of the merged page that shows that look, keeping its
+    # values, rather than leaving an old page next to the new script.
+    refreshed = 0
+    if 'widget-now-playing.html' in names:
+        widget_text = zf.read('widget-now-playing.html').decode('utf-8', 'replace')
+        for t in looks_of(widget_text):
+            legacy = '%s-now-playing.html' % t
+            dest = os.path.join(ROOT, legacy)
+            if legacy in names or not os.path.exists(dest):
+                continue
+            with open(dest, 'rb') as f:
+                old_text = f.read().decode('utf-8', 'replace')
+            merged = merge_widget(old_text, widget_text, legacy)
+            if merged == old_text:
+                continue
+            os.makedirs(backup, exist_ok=True)
+            shutil.copy2(dest, os.path.join(backup, legacy))
+            with open(dest, 'wb') as f:
+                f.write(merged.encode('utf-8'))
+            refreshed += 1
 
     # Releases before the tools/ folder kept these at the top level: tidy them
     # into the backup rather than leaving two copies around.
@@ -222,9 +272,12 @@ def update(source=None):
     print('Updated %s -> %s: %d file(s) replaced%s.' % (
         local or 'unknown', remote, replaced,
         ', your colour settings kept in %d widget file(s)' % kept if kept else ''))
+    if refreshed:
+        print('Refreshed %d widget file(s) from before the looks were merged: OBS can keep pointing at them, '
+              'but widget-now-playing.html is the one to use now.' % refreshed)
     if tidied:
         print('Moved %d old file(s) from before the tools folder into the backup.' % tidied)
-    if replaced or tidied:
+    if replaced or refreshed or tidied:
         print('The previous files are in %s' % backup)
     print('settings.txt was not touched. OBS shows the new version when the widget next loads.')
     return 0

@@ -1,40 +1,47 @@
-# Now Playing — OBS Widgets
+# Now Playing — OBS Widget
 
-"Now Playing" overlays for OBS Studio in several styles. Each widget displays the current song title, artist, and album artwork from **either**:
+A "Now Playing" overlay for OBS Studio with eleven looks to choose from. It displays the current song title, artist, and album artwork from **either**:
 
 - **The Spotify Web API** (no extra software — see [Spotify API Setup](#spotify-api-setup)), or
 - **[Snip](https://github.com/dlrudie/Snip/releases)** output files (the original method, still fully supported)
 
-All widgets share `now-playing-source.js`, which picks the source based on `settings.txt`. With no `settings.txt` at all, the widgets read Snip files exactly as before.
+The widget is one page, `widget-now-playing.html`. `theme=` in `settings.txt` picks the look and `now-playing-source.js` picks the source. With no `settings.txt` at all, the widget shows the Zune look and reads Snip files exactly as before.
 
-> **Important:** keep the unzipped folder as it is: the widget HTML files next to `now-playing-source.js` and `settings.txt`, with the `tools` folder beside them. OBS browser sources point at the widget files, and those stay where they are across updates.
+> **Important:** keep the unzipped folder as it is: `widget-now-playing.html` next to `now-playing-source.js` and `settings.txt`, with the `tools` folder beside them. OBS browser sources point at the widget file, and it stays where it is across updates.
 
-## Widgets
+## Files and looks
 
-| File | Style |
+| File | What it is |
 |---|---|
+| `widget-now-playing.html` | The widget. Add it to OBS as a browser source; `theme=` in `settings.txt` chooses the look |
+| `now-playing-source.js` | The shared script: settings, Spotify or Snip, updates |
 | `setup-spotify.bat`, `setup-spotify.sh` | One-click Spotify setup for Windows and Linux/macOS (run the helper, then the setup page does the rest) |
 | `tools/` | The setup page (`spotify-setup.html`, which also works on its own, opened directly in a browser) and the helper scripts the launchers run |
 | `update-widget.bat`, `update-widget.sh` | One click to bring the files in the folder up to the latest release (see [Updating](#updating)) |
-| `zune-now-playing.html` | Zune: accent bar, large title, dark panel |
-| `spotify-now-playing.html` | Spotify-style card with equalizer bars |
-| `apple-music-now-playing.html` | Apple Music card, tinted from the album art |
-| `ipod-now-playing.html` | Classic iPod screen |
-| `xbox-now-playing.html` | Green glow, typewriter label, drifting mist |
-| `basic-now-playing.html` | Plain dark card |
-| `minimal-rect-now-playing.html` | Art and text, no background |
-| `minimal-square-now-playing.html` | Large square art with centered text |
-| `candy-now-playing.html` | Cycling rainbow border and bubbly fonts |
-| `pixel-now-playing.html` | 8-bit look with scanlines |
-| `space-now-playing.html` | Starfield, orbit ring, and scanner line |
 
-Widgets other than Zune, Spotify, Apple Music, iPod, and Basic load their fonts from Google Fonts, so they need internet access when OBS starts; offline they fall back to a system font.
+| `theme=` | Look | Fonts |
+|---|---|---|
+| `zune` | Accent bar, large title, dark panel (the default) | system |
+| `spotify` | Spotify-style card with equalizer bars | system |
+| `apple-music` | Apple Music card, tinted from the album art | system |
+| `ipod` | Classic iPod screen | system |
+| `xbox` | Green glow, typewriter label, drifting mist | Google Fonts |
+| `basic` | Plain dark card | system |
+| `minimal-rect` | Art and text, no background | Google Fonts |
+| `minimal-square` | Large square art with centered text | Google Fonts |
+| `candy` | Cycling rainbow border and bubbly fonts | Google Fonts |
+| `pixel` | 8-bit look with scanlines | Google Fonts |
+| `space` | Starfield, orbit ring, and scanner line | Google Fonts |
+
+Only the look in use is loaded, so the others cost OBS nothing. Looks marked Google Fonts fetch their fonts when OBS starts and need internet access then; offline they fall back to a system font.
+
+To change the look, edit `theme=` in `settings.txt` and refresh the browser source (right-click it → **Refresh**). For one scene with a different look, add a browser source in URL mode (not "Local file") with an address like `file:///C:/Users/You/Widget/widget-now-playing.html?theme=candy`; the address wins over `settings.txt`.
 
 ---
 
 ## Download
 
-Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotify-Widget/releases/latest) and unzip it into a folder of its own. Everything below happens in that folder, and the widgets keep themselves up to date from there (see [Updating](#updating)). The folder holds the widget files, `now-playing-source.js`, `settings.txt` once set up, the four launchers, and a `tools` folder with the setup page and helper scripts.
+Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotify-Widget/releases/latest) and unzip it into a folder of its own. Everything below happens in that folder, and the widgets keep themselves up to date from there (see [Updating](#updating)). The folder holds `widget-now-playing.html`, `now-playing-source.js`, `settings.txt` once set up, the four launchers, and a `tools` folder with the setup page and helper scripts.
 
 ---
 
@@ -57,7 +64,7 @@ One-time setup, done on your normal desktop (not in OBS):
    The helper is a tiny local web server that listens only on your own computer (127.0.0.1, the address Spotify redirects to), serves only the setup page, and writes only `settings.txt`. Windows may show "Windows protected your PC" for a downloaded `.bat`: choose **More info → Run anyway**. Nothing is installed.
 
    **Without the helper:** open `tools/spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
-3. Either way you end up with a `settings.txt` next to the widget HTML files that looks like this:
+3. Either way you end up with a `settings.txt` next to `widget-now-playing.html` that looks like this:
 
    ```
    source=auto
@@ -65,6 +72,8 @@ One-time setup, done on your normal desktop (not in OBS):
    spotify_refresh_token=YOUR_REFRESH_TOKEN
    poll_interval=2000
    ```
+
+   Add a line such as `theme=space` to pick a look other than Zune (see [Files and looks](#files-and-looks)).
 
 4. Add the widget to OBS as a browser source (see below). Play a song on Spotify — on any device — and it appears in the widget.
 
@@ -141,7 +150,7 @@ Fallback order with `source=auto`: **Spotify API → Snip files**. After repeate
 
 ## Snip Setup (alternative to the Spotify API)
 
-If you'd rather not use the Spotify API (or want a fallback when offline), the widgets still read Snip's output files. This is used automatically when `settings.txt` is missing, `source=snip`, or the Spotify credentials stop working in `auto` mode.
+If you'd rather not use the Spotify API (or want a fallback when offline), the widget still reads Snip's output files. This is used automatically when `settings.txt` is missing, `source=snip`, or the Spotify credentials stop working in `auto` mode.
 
 ### File Structure
 
@@ -149,7 +158,7 @@ The widget reads files from a `Snip` folder **next to the HTML file**. The simpl
 
 ```
 C:\Users\YourName\
-├── zune-now-playing.html
+├── widget-now-playing.html
 ├── now-playing-source.js
 └── Snip\
     ├── Snip.txt
@@ -186,7 +195,7 @@ If you place the HTML file somewhere else, you must point Snip's output director
 
 1. Open OBS and add a new **Browser Source** to your scene.
 2. Check the **Local file** checkbox.
-3. Click **Browse** and select the widget HTML file (for example `zune-now-playing.html`).
+3. Click **Browse** and select `widget-now-playing.html`.
 4. Set the resolution to match your canvas:
    - **Width:** `1920`
    - **Height:** `1080`
@@ -195,9 +204,9 @@ If you place the HTML file somewhere else, you must point Snip's output director
 7. **Check** "Refresh browser when scene becomes active" — this forces a reload when you switch to the scene.
 8. Click **OK**.
 
-The widget appears in the **bottom-left corner** of the scene. Reposition or scale it in OBS as needed.
+The widget appears in the **bottom-left corner** of the scene in the look `theme=` names (Zune by default). Reposition or scale it in OBS as needed; for a second source with a different look, see [Files and looks](#files-and-looks).
 
-> Opening a widget by double-clicking it only shows the placeholder: normal browsers block file reads from a `file://` page, so `settings.txt` and the Snip files cannot be loaded there. Test inside OBS.
+> Opening the widget by double-clicking it only shows the placeholder: normal browsers block file reads from a `file://` page, so `settings.txt` and the Snip files cannot be loaded there. Test inside OBS.
 
 ---
 
@@ -212,13 +221,17 @@ The widget appears in the **bottom-left corner** of the scene. Reposition or sca
 
 ## Updating
 
-Every change to the widgets is published as a release, and installed widgets keep up by themselves:
+Every change to the widget is published as a release, and installed widgets keep up by themselves:
 
-- **In OBS, automatically.** When a widget loads it asks the release site which version is newest (one tiny request, at most once per 10 minutes for all the widgets in that OBS). If there is a newer one it fetches that widget's page and script (about 50 KB) and runs them in place of the local files, keeping `settings.txt`, your `--name=value` style lines, any values you changed in the file's `:root` block, and OBS's Custom CSS. Nothing is written to disk. Offline, or if anything about the download looks wrong, the local files run as they are.
-- **The files in the folder, with one click.** Double-click `update-widget.bat` (Windows) or run `./update-widget.sh` (Linux / macOS, needs Python 3). It downloads the newest `Widget.zip`, copies every file it is about to replace into `backup\<version>\`, and replaces them, leaving `settings.txt` alone and carrying the `:root` block of each widget file over into the new one. Run it when the setup page says a newer release is out, or whenever you like: it does nothing when you are already current.
-- **Turning it off.** `auto_update=off` in `settings.txt` makes the widgets always run the files as they are. A git checkout of the repository never auto-updates (its version is not stamped in), so use `git pull` there.
+- **In OBS, automatically.** When the widget loads it asks the release site which version is newest (one tiny request, at most once per 10 minutes for all the browser sources in that OBS). If there is a newer one it fetches the page and script (about 120 KB) and runs them in place of the local files, keeping `settings.txt`, your `--name=value` style lines, any values you changed in the file's `:root` block or in the block of the look in use, and OBS's Custom CSS. Nothing is written to disk. Offline, or if anything about the download looks wrong, the local files run as they are.
+- **The files in the folder, with one click.** Double-click `update-widget.bat` (Windows) or run `./update-widget.sh` (Linux / macOS, needs Python 3). It downloads the newest `Widget.zip`, copies every file it is about to replace into `backup\<version>\`, and replaces them, leaving `settings.txt` alone and carrying the `:root` block and the looks' blocks of the widget file over into the new one. Run it when the setup page says a newer release is out, or whenever you like: it does nothing when you are already current.
+- **Turning it off.** `auto_update=off` in `settings.txt` makes the widget always run the files as they are. A git checkout of the repository never auto-updates (its version is not stamped in), so use `git pull` there.
 
-The update site is the repository's GitHub Pages, published by the same workflow that makes the release. Everyone's OBS runs what the `main` branch publishes, so treat every push to `main` as a release. Opening a widget in a normal browser may swap in the newest page as well; it then shows the same placeholder as before, since browsers cannot read `settings.txt` from a `file://` page.
+The update site is the repository's GitHub Pages, published by the same workflow that makes the release. Everyone's OBS runs what the `main` branch publishes, so treat every push to `main` as a release. Opening the widget in a normal browser may swap in the newest page as well; it then shows the same placeholder as before, since browsers cannot read `settings.txt` from a `file://` page.
+
+### Coming from the per-look files
+
+Earlier releases shipped one file per look (`zune-now-playing.html`, `space-now-playing.html`, and so on). Those keep working: in OBS they update themselves into the merged page and, by their file name, keep showing their look. `update-widget` refreshes them in place the same way from its next run on (the helper that runs is the one already in your folder, and the first run replaces it). To tidy up, point the browser source at `widget-now-playing.html`, put `theme=` in `settings.txt`, and delete the old files when convenient. Four size variables were renamed on the way: `--candy-title-size`, `--px-title-size`, `--sp-title-size` and `--mc-title-size` (and their `-artist-size` twins) are now `--title-size` and `--artist-size` in every look.
 
 ---
 
@@ -226,10 +239,10 @@ The update site is the repository's GitHub Pages, published by the same workflow
 
 ### Colors, sizes, position
 
-Every widget starts with a `:root` block at the very top of its `<style>` that holds its colors, font sizes, position, and paused look — change those values and everything that depends on them updates. The Zune widget, for example:
+`widget-now-playing.html` starts with one block per look that holds that look's colors, font sizes, position, and paused look, followed by an empty `:root` block for values of your own — change those values and everything that depends on them updates. The Zune look, for example:
 
 ```css
-:root {
+[data-theme="zune"] {
   --accent-rgb:    255, 69, 0;                 /* main accent (bar, glow, rule) as R, G, B */
   --accent-2:      #E60073;                    /* gradient end / art fill tone   */
   --label-rgb:     255, 106, 51;               /* "now playing" label text as R, G, B */
@@ -246,33 +259,35 @@ Every widget starts with a `:root` block at the very top of its `<style>` that h
 
 There are two places to set them:
 
-- **`settings.txt`** (recommended): a line `--title-size=40px` sets that variable for every widget in the folder, and `zune.--accent-rgb=0, 200, 255` sets it for one widget only. These lines live next to your credentials, so they survive every update. `settings.example.txt` has examples.
-- **The widget file itself**: edit the `:root` block. Values there are kept across updates too (the automatic update carries the block over, and `update-widget` merges it into the new file), but a value set in `settings.txt` wins over it.
+- **`settings.txt`** (recommended): a line `--title-size=40px` sets that variable for every look, and `zune.--accent-rgb=0, 200, 255` sets it for one look only. These lines live next to your credentials, so they survive every update. `settings.example.txt` has examples.
+- **The widget file itself**: edit a look's block, or put a value in the `:root` block to apply it to every look. Values there are kept across updates too (the automatic update carries the `:root` block and the block of the look in use, and `update-widget` merges every block into the new file), but a value set in `settings.txt` wins over both.
 
 The `-rgb` values are plain red, green, blue numbers (0–255) rather than hex so the glows and shadows can be derived from them in every OBS version.
 
 | Variable | Controls |
 |---|---|
-| `--accent-rgb` | Left accent bar, its glow, the divider rule, and the title glow |
-| `--accent-2` | Bottom of the accent bar gradient and the album art background |
-| `--label-rgb` | "now playing" label (glow updates automatically) |
-| `--title-rgb` | Large track title text and its glow |
-| `--artist-color` | Artist name below the title |
-| `--title-size` / `--artist-size` | Font sizes |
-| `--bottom` / `--left` | Position on the canvas (every widget has these) |
-| `--paused-filter` | How the widget looks while paused: gray and faded by default (every widget) |
-| `--scroll-width` | Width of the scrolling title area (Zune only; other widgets scroll within their card width) |
+| `--title-size` / `--artist-size` | Font sizes (every look) |
+| `--bottom` / `--left` | Position on the canvas (every look) |
+| `--paused-filter` | How the widget looks while paused: gray and faded by default (every look) |
+| `--title-color` / `--artist-color` | Text colors in the zune (artist only), apple-music, ipod, basic, minimal-rect and minimal-square looks |
+| `--accent-rgb` | Zune: left accent bar, its glow, the divider rule, and the title glow |
+| `--accent-2` | Zune: bottom of the accent bar gradient and the album art background |
+| `--label-rgb` / `--title-rgb` | Zune: "now playing" label, and the large title text (their glows follow) |
+| `--scroll-width` | Zune: width of the scrolling title area (other looks scroll within their card width) |
+| `--green`, `--bg-card`, `--bg-art`, `--text-primary`, `--text-label`, `--text-artist` | Spotify look |
+| `--candy-*`, `--px-*`, `--mc-*`, `--sp-*` | Candy, pixel, xbox and space looks; each look's block in the file lists them with a note per line |
 
 ### Other settings
 
 | What to change | What to edit |
 |---|---|
+| Look | `theme` in `settings.txt` (default `zune`). See [Files and looks](#files-and-looks) |
 | Poll interval | `poll_interval` and `poll_interval_max` in `settings.txt` (default `2000` and `8000` ms) |
 | Automatic updates | `auto_update` in `settings.txt` (default `on`). See [Updating](#updating) |
 
 ### Paused and idle looks
 
-The script adds the class `is-paused` to the widget while playback is paused (and while it shows "Nothing playing"), and `is-idle` for the "Nothing playing" state only. While paused the whole widget is grayed out and faded (that is `--paused-filter`), and widgets with equalizer bars freeze them; while idle the bars are hidden. Each widget has a short "Paused / idle" section at the end of its CSS where you could hide the whole widget while idle instead.
+The script adds the class `is-paused` to the widget while playback is paused (and while it shows "Nothing playing"), and `is-idle` for the "Nothing playing" state only. While paused the whole widget is grayed out and faded (that is `--paused-filter`) and the equalizer bars freeze; the rest of the look keeps moving. While idle the bars are hidden and every animation in the look stands still, so an idle widget costs OBS nothing. The "Playing / paused / idle" section at the end of the widget's CSS is where you could hide the whole widget while idle instead.
 
 ---
 
@@ -312,4 +327,4 @@ The script adds the class `is-paused` to the widget while playback is paused (an
 - Make sure the browser source is not hidden or behind another source in the scene.
 
 **Text appears cut off**
-- Long titles scroll automatically. For the Zune widget, increase the `width` on `.zune-title-wrap` if the title area is too narrow; for card-style widgets, increase the card `width`.
+- Long titles scroll automatically. For the Zune look, widen the title area with `zune.--scroll-width=520px` in `settings.txt`; for card-style looks, increase the card `width` in that look's CSS.

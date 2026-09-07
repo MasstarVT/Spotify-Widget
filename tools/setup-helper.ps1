@@ -12,8 +12,11 @@
 
   Started by update-widget.bat (-Update): downloads the newest release and
   replaces the files in the widget folder. settings.txt is never touched, the
-  colour block (:root) at the top of each widget file keeps your values, and
-  every file that is replaced is copied to backup\<version>\ first.
+  value blocks at the top of the widget file (:root and each look's block)
+  keep your values, files from before the looks were merged into one page
+  (zune-now-playing.html, ...) are refreshed in place so OBS can keep
+  pointing at them, and every file that is replaced is copied to
+  backup\<version>\ first.
 #>
 param(
   [int]$Port = 8888,
@@ -99,12 +102,13 @@ function Get-VersionNumber([string]$s) {
 
 # ── update ──────────────────────────────────────────────────────────────────
 
-function Merge-Root([string]$old, [string]$new) {
-  # Carry the values of the old file's :root block (the customisation block at
-  # the top of every widget) into the new file: same names take the old value,
-  # names the new file does not know are added.
-  $pat = [regex]':root\s*\{[^}]*\}'
-  $mo = $pat.Match($old); $mn = $pat.Match($new)
+function Merge-Block([string]$old, [string]$new, [string]$oldSelector, [string]$newSelector) {
+  # Carry the values of one block (":root", or a look's [data-theme="..."]
+  # block at the top of the widget file) of the old file into a block of the
+  # new file: same names take the old value, names the new file does not
+  # know are added.
+  $mo = [regex]::Match($old, [regex]::Escape($oldSelector) + '\s*\{[^}]*\}')
+  $mn = [regex]::Match($new, [regex]::Escape($newSelector) + '\s*\{[^}]*\}')
   if (-not $mo.Success -or -not $mn.Success) { return $new }
   $eol = if ($new.Contains("`r`n")) { "`r`n" } else { "`n" }
   $block = $mn.Value
@@ -121,6 +125,30 @@ function Merge-Root([string]$old, [string]$new) {
     }
   }
   return $new.Substring(0, $mn.Index) + $block + $new.Substring($mn.Index + $mn.Length)
+}
+
+function Get-Looks([string]$widget) {
+  # The looks a widget-now-playing.html has (its <template data-theme="..."> tags).
+  return @([regex]::Matches($widget, '<template data-theme="([a-z0-9-]+)"') | ForEach-Object { $_.Groups[1].Value })
+}
+
+function Merge-Widget([string]$old, [string]$new, [string]$name) {
+  # Carry the values of a widget file across an update: its :root block and,
+  # in widget-now-playing.html, each look's block. A file from before the
+  # looks were merged (zune-now-playing.html, ...) holds one look's values in
+  # its :root: those become that look's values in the new file.
+  $looks = Get-Looks $new
+  if ($old -notmatch '\[data-theme=') {
+    $stem = $name -replace '-now-playing\.html$', ''
+    if ($looks -contains $stem) { return Merge-Block $old $new ':root' ('[data-theme="' + $stem + '"]') }
+    return Merge-Block $old $new ':root' ':root'
+  }
+  $out = Merge-Block $old $new ':root' ':root'
+  foreach ($t in $looks) {
+    $sel = '[data-theme="' + $t + '"]'
+    $out = Merge-Block $old $out $sel $sel
+  }
+  return $out
 }
 
 function Invoke-Update {
@@ -209,7 +237,7 @@ function Invoke-Update {
         Copy-Item $dest (Join-Path $bdir $parts[-1]) -Force
         if ($name.EndsWith('-now-playing.html')) {
           $newText = $utf8.GetString($data)
-          $merged  = Merge-Root $utf8.GetString($old) $newText
+          $merged  = Merge-Widget $utf8.GetString($old) $newText $name
           if ($merged -ne $newText) { $kept++ }
           $data = $utf8.GetBytes($merged)
         }
@@ -217,6 +245,29 @@ function Invoke-Update {
       New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
       [System.IO.File]::WriteAllBytes($dest, $data)
       $replaced++
+    }
+    # Files from before the looks were merged into widget-now-playing.html
+    # (zune-now-playing.html, ...) that OBS may still point at: refresh each
+    # one into a copy of the merged page that shows that look, keeping its
+    # values, rather than leaving an old page next to the new script.
+    $refreshed = 0
+    if ($names -contains 'widget-now-playing.html') {
+      $e  = $zip.GetEntry('widget-now-playing.html')
+      $sr = New-Object System.IO.StreamReader($e.Open(), $utf8)
+      $widgetText = $sr.ReadToEnd()
+      $sr.Close()
+      foreach ($t in (Get-Looks $widgetText)) {
+        $legacy = "$t-now-playing.html"
+        $dest   = Join-Path $root $legacy
+        if ($names -contains $legacy -or -not (Test-Path $dest)) { continue }
+        $oldText = [System.IO.File]::ReadAllText($dest, $utf8)
+        $merged  = Merge-Widget $oldText $widgetText $legacy
+        if ($merged -eq $oldText) { continue }
+        New-Item -ItemType Directory -Force $backup | Out-Null
+        Copy-Item $dest (Join-Path $backup $legacy) -Force
+        [System.IO.File]::WriteAllText($dest, $merged, $utf8)
+        $refreshed++
+      }
     }
     # Releases before the tools\ folder kept these at the top level: tidy them
     # into the backup rather than leaving two copies around.
@@ -238,8 +289,9 @@ function Invoke-Update {
   $from = if ($local) { $local } else { 'unknown' }
   $note = if ($kept) { ", your colour settings kept in $kept widget file(s)" } else { '' }
   Write-Host "Updated $from -> ${remote}: $replaced file(s) replaced$note."
+  if ($refreshed) { Write-Host "Refreshed $refreshed widget file(s) from before the looks were merged: OBS can keep pointing at them, but widget-now-playing.html is the one to use now." }
   if ($tidied) { Write-Host "Moved $tidied old file(s) from before the tools folder into the backup." }
-  if ($replaced -or $tidied) { Write-Host "The previous files are in $backup" }
+  if ($replaced -or $refreshed -or $tidied) { Write-Host "The previous files are in $backup" }
   Write-Host 'settings.txt was not touched. OBS shows the new version when the widget next loads.'
   return 0
 }

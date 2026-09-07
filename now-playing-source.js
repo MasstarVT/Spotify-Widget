@@ -16,7 +16,16 @@
        //               null when the track has no artwork: clear the image.
        //   playing     false while paused, stopped, or idle.
        //   placeholder true for the "Nothing playing" state.
+     }, {                                   // optional: a page with several looks
+       themes: ['zune', 'spotify', ...],    //   the looks it can show
+       defaultTheme: 'zune',
+       onTheme: function (name) { ... },    //   called once the look is known, before the first track
      });
+
+   The look (NowPlayingSource.theme) comes from, in this order: ?theme=name
+   on the page address, theme= in settings.txt, the page's file name
+   (zune-now-playing.html shows zune: the files from before the looks were
+   merged into one page), then defaultTheme.
 
    Spotify refresh tokens are single-use: every refresh returns a new one.
    The newest token (and the current access token) is kept in localStorage
@@ -93,6 +102,7 @@
 
   var settings = {
     source: 'auto',
+    theme: '',                    // which look widget-now-playing.html shows (see resolveTheme)
     spotify_client_id: '',
     spotify_refresh_token: '',
     poll_interval: MIN_POLL_MS,
@@ -100,7 +110,9 @@
     auto_update: 'on',
     update_url: UPDATE_URL,
   };
-  var cssVars = [];             // [name, value] from --name=value lines in settings.txt
+  var cssVars = [];             // [name, value, look] from --name=value lines in settings.txt ('' = every look)
+  var theme = '';               // the look this page shows, once resolveTheme has run
+  var knownThemes = null;       // the looks the page said it can show (null: any name goes)
 
   var callback  = null;
   var lastTrack = null;
@@ -208,9 +220,10 @@
           if (eq === -1) return;
           var key = line.slice(0, eq).trim();
           var css = /^(?:([a-z0-9-]+)\.)?(--[a-z0-9-]+)$/i.exec(key);
-          if (css) {                                   // --name=value, or zune.--name=value for one widget
+          if (css) {                                   // --name=value, or zune.--name=value for one look
             // no comment stripping here: colours look like "#1DB954"
-            if (!css[1] || css[1].toLowerCase() === widgetName()) cssVars.push([css[2], line.slice(eq + 1).trim()]);
+            // (the look is matched in applyStyles: theme= may come later in the file)
+            cssVars.push([css[2], line.slice(eq + 1).trim(), css[1] ? css[1].toLowerCase() : '']);
             return;
           }
           var val = line.slice(eq + 1).replace(/\s#.*$/, '').trim();   // " # comment" after a value
@@ -221,6 +234,8 @@
           } else if (key === 'source') {
             val = val.toLowerCase();
             if (val === 'auto' || val === 'spotify' || val === 'snip') settings.source = val;
+          } else if (key === 'theme') {
+            settings.theme = themeName(val);
           } else if (Object.prototype.hasOwnProperty.call(settings, key)) {
             settings[key] = val;
           }
@@ -244,19 +259,61 @@
     return p.slice(p.lastIndexOf('/') + 1);
   }
 
-  function widgetName() {                  // e.g. "zune"
+  function widgetName() {                  // e.g. "zune"; "widget" for widget-now-playing.html
     return pageName().replace(/-now-playing\.html$/i, '').toLowerCase();
+  }
+
+  /* ── the look ───────────────────────────────────────────────────────── */
+
+  function themeName(s) {                  // "Apple Music", "apple-music-now-playing.html" -> "apple-music"
+    s = String(s || '').trim().toLowerCase().replace(/(-now-playing)?\.html$/, '').replace(/[\s_]+/g, '-');
+    return /^[a-z0-9-]+$/.test(s) ? s : '';
+  }
+
+  function pageTheme() {                   // ?theme=space on the page address (one OBS source in URL mode)
+    var m = /[?&]theme=([^&#]*)/i.exec((typeof location !== 'undefined' && location.search) || '');
+    var v = '';
+    if (m) { try { v = decodeURIComponent(m[1]); } catch (e) { v = m[1]; } }
+    return themeName(v);
+  }
+
+  // Which look to show: the page address, then settings.txt, then the file
+  // name (zune-now-playing.html shows zune, for the files from before the
+  // looks were merged into one page), then the page's default. When the
+  // page says which looks it has, only those count.
+  function resolveTheme(opts) {
+    knownThemes = opts.themes || null;
+    function known(name) { return name && (!knownThemes || knownThemes.indexOf(name) !== -1) ? name : ''; }
+    if (settings.theme && !known(settings.theme)) {
+      try { console.warn('settings.txt: theme=' + settings.theme + ' is not one of ' + knownThemes.join(', ')); } catch (e) { /* no console */ }
+    }
+    theme = known(pageTheme()) || known(settings.theme) || known(widgetName()) || themeName(opts.defaultTheme) || widgetName();
+    if (theme && typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    window.NowPlayingSource.theme = theme;
   }
 
   // The --name=value lines from settings.txt become CSS variables on <html>,
   // above the widget's own :root block, so colours and positions live with
-  // the credentials and survive updates.
+  // the credentials and survive updates. zune.--name=value lines count for
+  // that look only.
   function applyStyles() {
     if (typeof document === 'undefined' || !document.documentElement) return;
     var root = document.documentElement;
     cssVars.forEach(function (v) {
+      if (v[2] && v[2] !== theme) return;
       try { root.style.setProperty(v[0], v[1]); } catch (e) { /* not a usable value */ }
     });
+    // A page from before the looks were merged that has updated itself into
+    // the merged page carries its :root block along (the old script wrote
+    // it, under this id). Those are one look's values: scope them to that
+    // look, so they do not leak into another one chosen with theme=.
+    var carried = document.getElementById('now-playing-local-root');
+    var stem = widgetName();
+    if (carried && stem && knownThemes && knownThemes.indexOf(stem) !== -1) {
+      carried.textContent = carried.textContent.replace(/:root(\s*\{)/, '[data-theme="' + stem + '"]$1');
+    }
   }
 
   /* ── auto-update ────────────────────────────────────────────────────── */
@@ -294,9 +351,12 @@
     } catch (e) { finish(null); }
   }
 
-  // What the new page must keep from this one: the :root block at the top
-  // of the widget's own stylesheet (the README's place for colour edits),
-  // and any stylesheet added after it, such as the Custom CSS OBS injects.
+  // What the new page must keep from this one: the :root block of the
+  // widget's own stylesheet (the README's place for edits) and, in the
+  // merged page, the block of the look in use; then any stylesheet added
+  // after it, such as the Custom CSS OBS injects. A page from before the
+  // looks were merged has no look blocks; its :root is one look's values
+  // and gets the id applyStyles scopes to that look.
   function carriedStyles() {
     if (typeof document === 'undefined') return '';
     var styles = document.getElementsByTagName('style'), out = '';
@@ -304,8 +364,11 @@
       var text = styles[i].textContent || '';
       if (text.indexOf('<\/style') !== -1 || text.indexOf('<\/script') !== -1) continue;
       if (i === 0) {
+        var merged = text.indexOf('[data-theme=') !== -1;
+        var t = merged && theme && new RegExp('\\[data-theme="' + theme + '"\\]\\s*\\{[^}]*\\}').exec(text);
+        if (t) out += '<style id="now-playing-user-theme">\n/* the ' + theme + ' values from the local copy of this widget */\n' + t[0] + '\n</style>\n';
         var m = /:root\s*\{[^}]*\}/.exec(text);
-        if (m) out += '<style id="now-playing-local-root">\n/* your values from the local copy of this widget */\n' + m[0] + '\n</style>\n';
+        if (m) out += '<style id="' + (merged ? 'now-playing-user-root' : 'now-playing-local-root') + '">\n/* your values from the local copy of this widget */\n' + m[0] + '\n</style>\n';
       } else {
         out += '<style>' + text + '</style>\n';
       }
@@ -919,10 +982,14 @@
 
   window.NowPlayingSource = {
     version: WIDGET_VERSION,
-    start: function (cb) {
+    theme: '',                             // the look in use, set by start()
+    start: function (cb, opts) {
       callback = cb;
+      opts = opts || {};
       loadSettings(function () {
+        resolveTheme(opts);                  // before the update check: a new page keeps this look's values
         checkForUpdate(function () {         // returns at once unless a newer release replaces this page
+          if (opts.onTheme) opts.onTheme(theme);
           applyStyles();
           begin();
         });
