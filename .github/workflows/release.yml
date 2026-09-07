@@ -1,0 +1,60 @@
+# Every push to main becomes a GitHub release with Widget.zip attached.
+#
+# Widget.zip is `git archive` of the commit: the tracked files, minus anything
+# marked export-ignore in .gitattributes (this .github folder). Releases are
+# numbered V1, V2, V3, ... continuing from the highest existing V<n> tag.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'      # workflow-only changes do not change the zip
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release         # one release at a time, so two quick pushes get distinct tags
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history and tags, for the notes and the tag check
+
+      - name: Build Widget.zip
+        run: git archive --format=zip -o Widget.zip HEAD
+
+      - name: Pick a tag
+        id: tag
+        run: |
+          last=$(git tag -l 'V[0-9]*' 'v[0-9]*' | sed -E 's/^[vV]//' | grep -E '^[0-9]+$' | sort -n | tail -1)
+          # The hand-made "Release V1" was tagged plain "Release": count it as 1.
+          if [ -z "$last" ] && git rev-parse -q --verify refs/tags/Release >/dev/null; then last=1; fi
+          n=$(( ${last:-0} + 1 ))
+          echo "tag=V$n" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$prev" ]; then range="$prev..HEAD"; else range="-1"; fi
+          {
+            echo "Download **Widget.zip** below, unzip it, and read the README for setup."
+            echo
+            echo "## Changes"
+            echo
+            git log --reverse --format='- **%s**%n%w(0,2,2)%b' $range | grep -v '^ *Co-Authored-By:'
+          } > notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" Widget.zip \
+            --title "Release ${{ steps.tag.outputs.tag }}" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA"

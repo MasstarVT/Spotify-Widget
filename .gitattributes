@@ -3,3 +3,6 @@
 *.py   text eol=lf
 *.ps1  text eol=crlf
 *.bat  text eol=crlf
+
+# Not part of the distributable Widget.zip (git archive and the release workflow)
+.github export-ignore
