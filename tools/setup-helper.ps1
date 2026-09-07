@@ -1,15 +1,17 @@
 <#
   setup-helper.ps1 - local helper for the Spotify widget (Windows).
 
+  Lives in tools\ next to spotify-setup.html; the widget folder is the parent.
+
   Started by setup-spotify.bat: runs a tiny web server on 127.0.0.1:8888 that
-  serves spotify-setup.html from this folder, receives Spotify's redirect, and
-  writes settings.txt right here, so the setup finishes without copying URLs
-  or picking folders. It only listens on this computer (127.0.0.1), only
+  serves spotify-setup.html, receives Spotify's redirect, and writes
+  settings.txt into the widget folder, so the setup finishes without copying
+  URLs or picking folders. It only listens on this computer (127.0.0.1), only
   serves the setup page, and only writes settings.txt. Close the window to
   stop it.
 
   Started by update-widget.bat (-Update): downloads the newest release and
-  replaces the widget files in this folder. settings.txt is never touched, the
+  replaces the files in the widget folder. settings.txt is never touched, the
   colour block (:root) at the top of each widget file keeps your values, and
   every file that is replaced is copied to backup\<version>\ first.
 #>
@@ -22,12 +24,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root     = Split-Path -Parent $MyInvocation.MyCommand.Path
-$pagePath = Join-Path $root 'spotify-setup.html'
+$here     = Split-Path -Parent $MyInvocation.MyCommand.Path   # tools\
+$root     = Split-Path -Parent $here                          # the widget folder
+if (-not (Test-Path (Join-Path $root 'now-playing-source.js')) -and (Test-Path (Join-Path $here 'now-playing-source.js'))) {
+  $root = $here                                               # a copy placed next to the widgets (the layout before tools\)
+}
+$pagePath = Join-Path $here 'spotify-setup.html'
 $settings = Join-Path $root 'settings.txt'
 $sourceJs = Join-Path $root 'now-playing-source.js'   # ($Source, the parameter, is a different thing)
 $updateUrlDefault = 'https://masstarvt.github.io/Spotify-Widget/'       # where releases are published
-$keep     = @('settings.txt', 'update-widget.bat', 'update-widget.sh')  # never replaced by an update
+$keep     = @('settings.txt')                                            # never replaced by an update
+$stale    = @('setup-helper.py', 'setup-helper.ps1', 'spotify-setup.html')   # top-level copies from before tools\
 $token    = [guid]::NewGuid().ToString('N')
 $utf8     = New-Object System.Text.UTF8Encoding($false)
 $ascii    = [System.Text.Encoding]::ASCII
@@ -36,14 +43,14 @@ function Fail([string]$message) {
   Write-Host ''
   Write-Host $message
   if (-not $Update) {
-    Write-Host 'You can also open spotify-setup.html directly in Chrome or Edge instead.'
+    Write-Host 'You can also open tools\spotify-setup.html directly in Chrome or Edge instead.'
     Read-Host 'Press Enter to close' | Out-Null
   }
   exit 1
 }
 
 if (-not (Test-Path $pagePath)) {
-  Fail 'spotify-setup.html was not found next to this script. Keep the widget files together in one folder.'
+  Fail 'spotify-setup.html was not found next to this script. Keep the unzipped folder as it is (tools\ next to the widget files).'
 }
 
 # ── versions ────────────────────────────────────────────────────────────────
@@ -211,6 +218,19 @@ function Invoke-Update {
       [System.IO.File]::WriteAllBytes($dest, $data)
       $replaced++
     }
+    # Releases before the tools\ folder kept these at the top level: tidy them
+    # into the backup rather than leaving two copies around.
+    $tidied = 0
+    if ($root -ne $here) {
+      foreach ($name in $stale) {
+        $old = Join-Path $root $name
+        if ($names -notcontains $name -and (Test-Path $old)) {
+          New-Item -ItemType Directory -Force $backup | Out-Null
+          Move-Item $old (Join-Path $backup $name) -Force
+          $tidied++
+        }
+      }
+    }
   } finally {
     $zip.Dispose()
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
@@ -218,7 +238,8 @@ function Invoke-Update {
   $from = if ($local) { $local } else { 'unknown' }
   $note = if ($kept) { ", your colour settings kept in $kept widget file(s)" } else { '' }
   Write-Host "Updated $from -> ${remote}: $replaced file(s) replaced$note."
-  if ($replaced) { Write-Host "The previous files are in $backup" }
+  if ($tidied) { Write-Host "Moved $tidied old file(s) from before the tools folder into the backup." }
+  if ($replaced -or $tidied) { Write-Host "The previous files are in $backup" }
   Write-Host 'settings.txt was not touched. OBS shows the new version when the widget next loads.'
   return 0
 }

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """setup-helper.py - local helper for the Spotify widget (Linux / macOS).
 
+Lives in tools/ next to spotify-setup.html; the widget folder is the parent.
+
 Started by setup-spotify.sh: runs a tiny web server on 127.0.0.1:8888 that
-serves spotify-setup.html from this folder, receives Spotify's redirect, and
-writes settings.txt right here, so the setup finishes without copying URLs
-or picking folders. It only listens on this computer (127.0.0.1), only
+serves spotify-setup.html, receives Spotify's redirect, and writes
+settings.txt into the widget folder, so the setup finishes without copying
+URLs or picking folders. It only listens on this computer (127.0.0.1), only
 serves the setup page, and only writes settings.txt. Press Ctrl+C or close
 the terminal to stop it.
 
 Started by update-widget.sh (--update): downloads the newest release and
-replaces the widget files in this folder. settings.txt is never touched, the
+replaces the files in the widget folder. settings.txt is never touched, the
 colour block (:root) at the top of each widget file keeps your values, and
 every file that is replaced is copied to backup/<version>/ first.
 """
@@ -28,12 +30,17 @@ import urllib.request
 import webbrowser
 import zipfile
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-PAGE = os.path.join(ROOT, 'spotify-setup.html')
+HERE = os.path.dirname(os.path.abspath(__file__))     # tools/
+ROOT = os.path.dirname(HERE)                           # the widget folder
+if (not os.path.exists(os.path.join(ROOT, 'now-playing-source.js')) and
+        os.path.exists(os.path.join(HERE, 'now-playing-source.js'))):
+    ROOT = HERE                                        # a copy placed next to the widgets (the layout before tools/)
+PAGE = os.path.join(HERE, 'spotify-setup.html')
 SETTINGS = os.path.join(ROOT, 'settings.txt')
 SOURCE = os.path.join(ROOT, 'now-playing-source.js')
 UPDATE_URL = 'https://masstarvt.github.io/Spotify-Widget/'         # where releases are published
-KEEP = ('settings.txt', 'update-widget.bat', 'update-widget.sh')   # never replaced by an update
+KEEP = ('settings.txt',)                                           # never replaced by an update
+STALE = ('setup-helper.py', 'setup-helper.ps1', 'spotify-setup.html')   # top-level copies from before tools/
 TOKEN = secrets.token_hex(16)
 PORT = 8888
 SAVED = False
@@ -201,10 +208,23 @@ def update(source=None):
             f.write(data)
         replaced += 1
 
+    # Releases before the tools/ folder kept these at the top level: tidy them
+    # into the backup rather than leaving two copies around.
+    tidied = 0
+    if ROOT != HERE:
+        for name in STALE:
+            old = os.path.join(ROOT, name)
+            if name not in names and os.path.exists(old):
+                os.makedirs(backup, exist_ok=True)
+                shutil.move(old, os.path.join(backup, name))
+                tidied += 1
+
     print('Updated %s -> %s: %d file(s) replaced%s.' % (
         local or 'unknown', remote, replaced,
         ', your colour settings kept in %d widget file(s)' % kept if kept else ''))
-    if replaced:
+    if tidied:
+        print('Moved %d old file(s) from before the tools folder into the backup.' % tidied)
+    if replaced or tidied:
         print('The previous files are in %s' % backup)
     print('settings.txt was not touched. OBS shows the new version when the widget next loads.')
     return 0
@@ -273,7 +293,7 @@ def main():
     PORT = args.port
 
     if not os.path.exists(PAGE):
-        print('spotify-setup.html was not found next to this script. Keep the widget files together in one folder.')
+        print('spotify-setup.html was not found next to this script. Keep the unzipped folder as it is (tools/ next to the widget files).')
         return 1
     if args.update or args.source:
         return update(args.source)
@@ -283,7 +303,7 @@ def main():
         server = server_class(('127.0.0.1', PORT), Handler)
     except OSError:
         print('Port %d is already in use (often by Jupyter or another copy of this setup).' % PORT)
-        print('Close that program and run this again, or open spotify-setup.html directly in Chrome/Chromium.')
+        print('Close that program and run this again, or open tools/spotify-setup.html directly in Chrome/Chromium.')
         return 1
 
     print()

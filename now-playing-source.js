@@ -477,7 +477,7 @@
         } else {
           // Expired (6 months), revoked, or already used from another copy
           // of settings.txt: only a new login fixes this.
-          spotifyFailed('Spotify login expired: re-run spotify-setup.html');
+          spotifyFailed('Spotify login expired: run setup-spotify again');
         }
       } else if (err && err.error) {
         spotifyFailed('Spotify: ' + (err.error_description || err.error));   // e.g. wrong client id

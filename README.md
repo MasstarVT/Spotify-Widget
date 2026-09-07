@@ -7,14 +7,14 @@
 
 All widgets share `now-playing-source.js`, which picks the source based on `settings.txt`. With no `settings.txt` at all, the widgets read Snip files exactly as before.
 
-> **Important:** the widget HTML files must stay in the same folder as `now-playing-source.js` (and `settings.txt`, if you use it).
+> **Important:** keep the unzipped folder as it is: the widget HTML files next to `now-playing-source.js` and `settings.txt`, with the `tools` folder beside them. OBS browser sources point at the widget files, and those stay where they are across updates.
 
 ## Widgets
 
 | File | Style |
 |---|---|
-| `setup-spotify.bat`, `setup-spotify.sh` | One-click Spotify setup for Windows and Linux/macOS (run the helper, then `spotify-setup.html` does the rest) |
-| `spotify-setup.html` | The setup page itself; also works on its own, opened directly in a browser |
+| `setup-spotify.bat`, `setup-spotify.sh` | One-click Spotify setup for Windows and Linux/macOS (run the helper, then the setup page does the rest) |
+| `tools/` | The setup page (`spotify-setup.html`, which also works on its own, opened directly in a browser) and the helper scripts the launchers run |
 | `update-widget.bat`, `update-widget.sh` | One click to bring the files in the folder up to the latest release (see [Updating](#updating)) |
 | `zune-now-playing.html` | Zune: accent bar, large title, dark panel |
 | `spotify-now-playing.html` | Spotify-style card with equalizer bars |
@@ -34,7 +34,7 @@ Widgets other than Zune, Spotify, Apple Music, iPod, and Basic load their fonts 
 
 ## Download
 
-Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotify-Widget/releases/latest) and unzip it into a folder of its own. Everything below happens in that folder, and the widgets keep themselves up to date from there (see [Updating](#updating)).
+Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotify-Widget/releases/latest) and unzip it into a folder of its own. Everything below happens in that folder, and the widgets keep themselves up to date from there (see [Updating](#updating)). The folder holds the widget files, `now-playing-source.js`, `settings.txt` once set up, the four launchers, and a `tools` folder with the setup page and helper scripts.
 
 ---
 
@@ -56,7 +56,7 @@ One-time setup, done on your normal desktop (not in OBS):
 
    The helper is a tiny local web server that listens only on your own computer (127.0.0.1, the address Spotify redirects to), serves only the setup page, and writes only `settings.txt`. Windows may show "Windows protected your PC" for a downloaded `.bat`: choose **More info → Run anyway**. Nothing is installed.
 
-   **Without the helper:** open `spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
+   **Without the helper:** open `tools/spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
 3. Either way you end up with a `settings.txt` next to the widget HTML files that looks like this:
 
    ```
@@ -72,7 +72,7 @@ One-time setup, done on your normal desktop (not in OBS):
 
 Spotify refresh tokens are single-use: every refresh hands back a new one. The widget stores the newest token (and the current access token) in OBS's browser storage, so it keeps working across OBS restarts, and every widget in the same OBS shares one login. `settings.txt` is only read as the starting point.
 
-Refresh tokens also expire after **6 months**. If the widget stops showing Spotify (it falls back to Snip, or shows "Nothing playing" while music is playing), run `spotify-setup.html` again and paste the new token into `settings.txt`. The widget notices the changed token and starts fresh.
+Refresh tokens also expire after **6 months**. If the widget stops showing Spotify (it falls back to Snip, or shows "Nothing playing" while music is playing), run `setup-spotify.bat` / `.sh` again; it writes the new token into `settings.txt`. The widget notices the changed token and starts fresh.
 
 ### Rate limits and the request quota
 
@@ -87,7 +87,7 @@ Spotify puts two limits on a development-mode app. The first is a rate limit: ev
 
 In numbers, measured in a simulation of the widget against a scripted Spotify: a track playing undisturbed costs about 570 requests an hour, an hour of constant skipping and pausing about 720, and an idle hour about 130. Polling every two seconds, as earlier versions did, was 1800 an hour. A streaming day with two idle hours, eight hours of music with the odd pause and skip, and four idle hours after comes to about 4,700 requests instead of 18,000.
 
-The one thing the widget cannot see is other people. The quota is per developer account, so if several streamers share one Client ID their requests add up. For a shared app, raise `poll_interval_max` for everyone, or give each person their own app. The Troubleshooting test on `spotify-setup.html` uses three requests.
+The one thing the widget cannot see is other people. The quota is per developer account, so if several streamers share one Client ID their requests add up. For a shared app, raise `poll_interval_max` for everyone, or give each person their own app. The Troubleshooting test on the setup page uses three requests.
 
 ### Using it on a friend's stream (another Spotify account)
 
@@ -95,11 +95,11 @@ Each streamer needs their **own** `settings.txt`, made by logging in with their 
 
 There are two ways to set a friend up:
 
-**They create their own Spotify app** (their own Client ID). Since February 2026 this requires **their own Spotify Premium**; without it the app does not work even though the setup page hands out a token. In the app's settings they need the Redirect URI `http://127.0.0.1:8888/callback` and **Web API** ticked. Then they run `spotify-setup.html` with their Client ID exactly as in the steps above.
+**They create their own Spotify app** (their own Client ID). Since February 2026 this requires **their own Spotify Premium**; without it the app does not work even though the setup page hands out a token. In the app's settings they need the Redirect URI `http://127.0.0.1:8888/callback` and **Web API** ticked. Then they run the setup (`setup-spotify.bat` / `.sh`) with their Client ID exactly as in the steps above.
 
-**They use your app** (your Client ID). A development-mode app only serves the owner and the accounts the owner has listed: open [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), open the app, go to **Settings → User Management**, and add their name and the email of their Spotify account (up to five users on new apps; your Premium has to stay active). Then they run `spotify-setup.html` with **your** Client ID while logged in to **their** Spotify account.
+**They use your app** (your Client ID). A development-mode app only serves the owner and the accounts the owner has listed: open [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), open the app, go to **Settings → User Management**, and add their name and the email of their Spotify account (up to five users on new apps; your Premium has to stay active). Then they run the setup (`setup-spotify.bat` / `.sh`) with **your** Client ID while logged in to **their** Spotify account.
 
-Either way, the setup page checks the account at the end of Step 3 and shows what Spotify answered, including what is currently playing. If a widget still shows "Nothing playing" with a reason underneath, open `spotify-setup.html`, load (or paste) that `settings.txt` into the **Troubleshooting** box, and test it: the page does exactly what the widget does and prints Spotify's answers. Testing uses the token up, so save the updated file the test hands back; the Save button writes it straight into the widget folder.
+Either way, the setup page checks the account at the end of Step 3 and shows what Spotify answered, including what is currently playing. If a widget still shows "Nothing playing" with a reason underneath, open the setup page (`setup-spotify.bat` / `.sh`), load (or paste) that `settings.txt` into the **Troubleshooting** box, and test it: the page does exactly what the widget does and prints Spotify's answers. Testing uses the token up, so save the updated file the test hands back; the Save button writes it straight into the widget folder.
 
 If you tried someone else's `settings.txt` on your own machine, just put your own file back. The widget keeps a separate saved login for each `settings.txt` token, so yours resumes where it left off.
 
@@ -111,7 +111,7 @@ If an account is not on the list, Spotify answers every request with "User not r
 |---|---|
 | `source` | `auto` (Spotify API if credentials work, else Snip files), `spotify` (API only), or `snip` (Snip files only). Not case-sensitive; anything else means `auto`. |
 | `spotify_client_id` | From your Spotify Developer app |
-| `spotify_refresh_token` | Generated by `spotify-setup.html` |
+| `spotify_refresh_token` | Generated by the setup page |
 | `poll_interval` | How quickly a change shows right after something happened, in ms (default and minimum `2000`; lower values are ignored). Track ends are checked on time regardless. See [Rate limits](#rate-limits-and-the-request-quota) |
 | `poll_interval_max` | The longest gap between checks while a track plays undisturbed, in ms (default `8000`; never below `poll_interval`). Raise it to use fewer requests; a mid-track skip or pause then takes up to this long to show |
 
@@ -131,11 +131,11 @@ Fallback order with `source=auto`: **Spotify API → Snip files**. After repeate
 | "Nothing playing / Spotify: this account is not added to the app" | The Spotify account is not listed under the app's User Management. See [Using it on a friend's stream](#using-it-on-a-friends-stream-another-spotify-account) |
 | "Nothing playing / Spotify rate limited, retrying in …" | Too many requests in 30 seconds, usually from another program using the same app. See [Rate limits](#rate-limits-and-the-request-quota) |
 | "Nothing playing / Spotify request quota used up, retrying in …" | The development-mode request quota for your developer account is used up; Spotify restores it after some hours. See [Rate limits](#rate-limits-and-the-request-quota) |
-| "Nothing playing / Spotify login expired: re-run spotify-setup.html" | Spotify rejected the refresh token: expired after 6 months, revoked, or copied from someone else's settings.txt |
+| "Nothing playing / Spotify login expired: run setup-spotify again" | Spotify rejected the refresh token: expired after 6 months, revoked, or copied from someone else's settings.txt |
 | "Nothing playing / Snip not detected" | `settings.txt` has no Spotify credentials (or says `source=snip`) and `Snip\Snip.txt` was not found next to the widget |
 | "Nothing playing / No settings.txt and no Snip files" | Neither file was found next to the widget. Check the file is really named `settings.txt` (Windows may have hidden a second `.txt`) and sits in the same folder as the HTML files |
 | "Nothing playing / settings.txt must be saved as UTF-8" | The file was saved with another encoding (Notepad's "Unicode"). Save it again as UTF-8 |
-| "Nothing playing / Spotify unreachable", "Spotify login failed (HTTP …)" or "Spotify error (HTTP …)" | Spotify could not be reached or gave an unexpected answer. The widget retries every 30 seconds; the Troubleshooting box on `spotify-setup.html` shows the exact response |
+| "Nothing playing / Spotify unreachable", "Spotify login failed (HTTP …)" or "Spotify error (HTTP …)" | Spotify could not be reached or gave an unexpected answer. The widget retries every 30 seconds; the Troubleshooting box on the setup page shows the exact response |
 
 ---
 
@@ -285,11 +285,11 @@ The script adds the class `is-paused` to the widget while playback is paused (an
 - In OBS, right-click the browser source → **Refresh** to force a reload.
 
 **Spotify worked before but the widget now only shows Snip data, or "Nothing playing" while music plays**
-- The refresh token has expired (Spotify expires them after 6 months) or the stored login was lost. Run `spotify-setup.html` again and paste the new token into `settings.txt`.
+- The refresh token has expired (Spotify expires them after 6 months) or the stored login was lost. Run `setup-spotify.bat` / `.sh` again; it writes the new token into `settings.txt`.
 - If the app owner's Spotify Premium lapsed, the app stops working until it is renewed.
 
 **A friend's copy shows "Nothing playing" although the setup page said Success**
-- Open `spotify-setup.html`, paste their `settings.txt` into the Troubleshooting box, and read Spotify's answer. The usual causes: the app owner has no Spotify Premium (required since February 2026), the account is not listed under the app's User Management, or the `settings.txt` was copied from someone else and its token is already used up. See [Using it on a friend's stream](#using-it-on-a-friends-stream-another-spotify-account).
+- Open the setup page (`setup-spotify.bat` / `.sh`), paste their `settings.txt` into the Troubleshooting box, and read Spotify's answer. The usual causes: the app owner has no Spotify Premium (required since February 2026), the account is not listed under the app's User Management, or the `settings.txt` was copied from someone else and its token is already used up. See [Using it on a friend's stream](#using-it-on-a-friends-stream-another-spotify-account).
 
 **Widget shows "Spotify: this account is not added to the app"**
 - The Spotify account that authorized is not listed under the app's **User Management** in the Developer Dashboard. The app owner adds that account's email there; the widget starts working on its next retry without redoing the setup.

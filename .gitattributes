@@ -9,3 +9,7 @@
 
 # Release builds get the version stamped into WIDGET_VERSION (git describe)
 now-playing-source.js export-subst
+
+# Git housekeeping, not part of the zip or the site
+.gitattributes export-ignore
+.gitignore export-ignore
