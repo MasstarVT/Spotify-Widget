@@ -21,6 +21,11 @@
     background: #0d0d0d; border: 1px solid #333; border-radius: 6px; color: #eee;
     font-family: Consolas, monospace; font-size: 13px;
   }
+  select {
+    padding: 8px 10px; margin: 8px 0;
+    background: #0d0d0d; border: 1px solid #333; border-radius: 6px; color: #eee;
+    font-family: inherit; font-size: 14px;
+  }
   button {
     background: #1DB954; color: #000; font-weight: 600; border: 0;
     padding: 10px 22px; border-radius: 20px; font-size: 14px; cursor: pointer; margin-top: 6px;
@@ -46,9 +51,9 @@
 <body>
 
 <h1>Spotify Widget — one-time setup</h1>
-<p>This page gets you a <b>refresh token</b> so the OBS widgets can read your
-currently playing song straight from the Spotify API, and writes it into
-<code>settings.txt</code> for you.
+<p>This page gets you a <b>refresh token</b> so the OBS widget can read your
+currently playing song straight from the Spotify API, writes it into
+<code>settings.txt</code> for you, and lets you pick the widget's look.
 <span class="when-manual">Open this page in your <b>normal browser</b> (Chrome or Edge can save the file
 directly; Firefox and others download it), not in OBS. For a fully automatic setup, run
 <code>setup-spotify.bat</code> (Windows) or <code>setup-spotify.sh</code> (Linux/macOS) instead of opening this file.</span>
@@ -93,16 +98,21 @@ the app does not work even though this page hands out a token. Refresh tokens al
 </div>
 
 <div class="step" id="resultStep" style="display:none">
-  <h2 style="margin-top:0">Step 4 — Save settings.txt</h2>
-  <p>This is your <code>settings.txt</code>. It belongs in the same folder as the widget HTML files.</p>
+  <h2 style="margin-top:0">Step 4 — Pick a look and save settings.txt</h2>
+  <div class="row"><label for="themeSel">Look:</label> <select id="themeSel"></select></div>
+  <p class="note">The look can be changed any time by editing <code>theme=</code> in <code>settings.txt</code>;
+  OBS shows it when the browser source next loads. <code>settings.example.txt</code> lists every colour and
+  size of every look.</p>
+  <p>This is your <code>settings.txt</code>. It belongs next to <code>widget-now-playing.html</code>.</p>
   <textarea id="result" readonly></textarea>
   <div class="row">
     <button id="saveBtn">Save into the widget folder</button>
     <button id="downloadBtn" class="secondary">Download instead</button>
   </div>
   <p id="saveStatus"></p>
-  <p class="note" id="saveNote">"Save into the widget folder" asks you to pick that folder once, checks that the widget
-  files are in it, and writes <code>settings.txt</code> there, keeping any other settings you already had.
+  <p class="note" id="saveNote">"Save into the widget folder" asks you to pick that folder once, checks that
+  <code>widget-now-playing.html</code> is in it, and writes <code>settings.txt</code> there, keeping any other
+  settings you already had (a look already chosen there stays unless you pick one above).
   Chrome and Edge only; in other browsers use Download and move the file into the folder yourself.</p>
   <p class="note">The widget keeps its own copy of the token as Spotify rotates it, so you only
   need to run this setup again when you re-authorize. Each person needs their own
@@ -115,7 +125,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
   <p>Widget stuck on "Nothing playing" with a reason underneath? Load the <code>settings.txt</code>
   from the widget folder (or paste its contents, yours or a friend's) and this page will do exactly what
   the widget does and show you Spotify's answers.</p>
-  <textarea id="testInput" class="input" spellcheck="false" placeholder="source=auto&#10;spotify_client_id=...&#10;spotify_refresh_token=...&#10;poll_interval=2000"></textarea>
+  <textarea id="testInput" class="input" spellcheck="false" placeholder="theme=zune&#10;source=auto&#10;spotify_client_id=...&#10;spotify_refresh_token=...&#10;poll_interval=2000"></textarea>
   <div class="row">
     <button id="testBtn">Test these settings</button>
     <button id="loadBtn" class="secondary">Load from the widget folder</button>
@@ -146,6 +156,33 @@ the app does not work even though this page hands out a token. Refresh tokens al
   var testEl    = document.getElementById('testStatus');
   var authLink  = document.getElementById('authLink');
   var clientIdEl = document.getElementById('clientId');
+  var themeSel   = document.getElementById('themeSel');
+  var themeChosen = false;                          // the user picked a look on this page
+
+  // The looks widget-now-playing.html has (theme= in settings.txt).
+  var LOOKS = [
+    ['zune',           'Zune: accent bar, large title, dark panel'],
+    ['spotify',        'Spotify: card with equalizer bars'],
+    ['apple-music',    'Apple Music: card tinted from the album art'],
+    ['ipod',           'iPod: classic iPod screen'],
+    ['xbox',           'Xbox: green glow, typewriter label, drifting mist'],
+    ['basic',          'Basic: plain dark card'],
+    ['minimal-rect',   'Minimal rect: art and text, no background'],
+    ['minimal-square', 'Minimal square: large square art, centered text'],
+    ['candy',          'Candy: cycling rainbow border, bubbly fonts'],
+    ['pixel',          'Pixel: 8-bit look with scanlines'],
+    ['space',          'Space: starfield, orbit ring, scanner line'],
+  ];
+  LOOKS.forEach(function (l) {
+    var o = document.createElement('option');
+    o.value = l[0]; o.textContent = l[1];
+    themeSel.appendChild(o);
+  });
+  function isLook(name) { return LOOKS.some(function (l) { return l[0] === name; }); }
+  function lookIn(cfg) {                            // a valid theme= from parsed settings, else ''
+    var t = String(cfg.theme || '').trim().toLowerCase();
+    return isLook(t) ? t : '';
+  }
 
   function setText(el, text, cls) { el.textContent = text; el.className = cls || ''; }
   function setStatus(text, cls) { setText(statusEl, text, cls); }
@@ -176,7 +213,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
         if (ln !== null && rn > ln) {
           el.textContent = 'The widget files in this folder are ' + local + ' and ' + latest + ' is out. ' +
             'Run update-widget.bat (Windows) or update-widget.sh (Linux/macOS) in the widget folder to update them; ' +
-            'widgets in OBS switch to ' + latest + ' by themselves unless settings.txt says auto_update=off.';
+            'the widget in OBS switches to ' + latest + ' by itself unless settings.txt says auto_update=off.';
         } else if (ln !== null) {
           el.textContent = 'Widget files: ' + local + ' (the latest release).';
         } else {
@@ -210,11 +247,12 @@ the app does not work even though this page hands out a token. Refresh tokens al
     return m ? m[1] : '';
   }
 
-  function settingsText(clientId, refreshToken, source, poll) {
-    return 'source=' + (source || 'auto') + '\n' +
+  function settingsText(clientId, refreshToken, theme) {
+    return 'theme=' + (theme || 'zune') + '\n' +
+           'source=auto\n' +
            'spotify_client_id=' + clientId + '\n' +
            'spotify_refresh_token=' + refreshToken + '\n' +
-           'poll_interval=' + (poll || '2000') + '\n';
+           'poll_interval=2000\n';
   }
 
   // Same rules as the widget: key=value, # comments, " # ..." after a value.
@@ -230,24 +268,45 @@ the app does not work even though this page hands out a token. Refresh tokens al
     return out;
   }
 
-  // Keep whatever else is in an existing settings.txt (source, poll_interval,
-  // comments); only the client id and refresh token change.
-  function mergeSettings(existing, clientId, refreshToken) {
-    if (!existing || !existing.trim()) return settingsText(clientId, refreshToken);
-    var values = { spotify_client_id: clientId, spotify_refresh_token: refreshToken };
+  // Keep whatever else is in an existing settings.txt (comments, poll
+  // intervals, colour lines, the look); only the given keys change, and a
+  // key the file does not have yet is added at the end.
+  function mergeSettings(existing, values) {
+    var keys = Object.keys(values).filter(function (k) { return values[k] !== undefined && values[k] !== null; });
+    if (!existing || !existing.trim()) {
+      return settingsText(values.spotify_client_id || '', values.spotify_refresh_token || '', values.theme);
+    }
     var seen = {};
+    var re = new RegExp('^(\\s*)(' + keys.join('|') + ')(\\s*=)', 'i');
     var lines = existing.replace(/\r\n?/g, '\n').split('\n').map(function (line) {
-      var m = line.match(/^(\s*)(spotify_client_id|spotify_refresh_token)(\s*=)/i);
+      var m = keys.length ? line.match(re) : null;
       if (!m) return line;
       var key = m[2].toLowerCase();
       seen[key] = true;
       return m[1] + key + '=' + values[key];
     });
     while (lines.length && lines[lines.length - 1] === '') lines.pop();
-    Object.keys(values).forEach(function (key) { if (!seen[key]) lines.push(key + '=' + values[key]); });
+    keys.forEach(function (key) { if (!seen[key]) lines.push(key + '=' + values[key]); });
     if (!/^\s*source\s*=/im.test(existing)) lines.unshift('source=auto');
     return lines.join('\n') + '\n';
   }
+
+  // The look to write when saving over `existing`: the one picked on this
+  // page; otherwise the one the file already has stays as it is (undefined
+  // = leave the line alone); a file without one gets what the text says.
+  function themeToWrite(existing, wanted) {
+    if (themeChosen) return themeSel.value;
+    if (existing && lookIn(parseSettings(existing))) return undefined;
+    return lookIn(wanted) || 'zune';
+  }
+
+  themeSel.onchange = function () {
+    themeChosen = true;
+    var area = document.getElementById('result');
+    if (area.value) area.value = mergeSettings(area.value, { theme: themeSel.value });
+    // The helper saves at once, so a look picked after the token arrived lands in the file too.
+    if (helper && document.getElementById('resultStep').style.display !== 'none') document.getElementById('saveBtn').click();
+  };
 
   function download(text) {
     var a = document.createElement('a');
@@ -340,7 +399,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
     if (!dir) {
       dir = await window.showDirectoryPicker({ id: 'now-playing-widget', mode: 'readwrite' });
       if (!(await hasWidgetFiles(dir))) {
-        var err = new Error('That folder has no now-playing-source.js in it. Pick the folder where the widget HTML files are.');
+        var err = new Error('That folder has no now-playing-source.js in it. Pick the folder where widget-now-playing.html is.');
         err.name = 'WrongFolder';
         throw err;
       }
@@ -384,20 +443,24 @@ the app does not work even though this page hands out a token. Refresh tokens al
         if (helper) {
           setText(status, 'Saving…');
           existing = await helperRead();                     // null when the folder has no settings.txt yet
-          text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
-          await helperWrite(text);
-          where = 'the widget folder';
         } else {
-          setText(status, 'Pick the folder that holds the widget HTML files…');
+          setText(status, 'Pick the folder that holds widget-now-playing.html…');
           var dir  = await widgetFolder();
           existing = await readSettingsFile(dir);
-          text     = mergeSettings(existing, wanted.spotify_client_id, wanted.spotify_refresh_token);
-          await writeSettingsFile(dir, text);
-          where = '"' + dir.name + '"';
         }
+        text = mergeSettings(existing, {
+          spotify_client_id:     wanted.spotify_client_id,
+          spotify_refresh_token: wanted.spotify_refresh_token,
+          theme:                 themeToWrite(existing, wanted),
+        });
+        if (helper) { await helperWrite(text); where = 'the widget folder'; }
+        else        { await writeSettingsFile(dir, text); where = '"' + dir.name + '"'; }
         area.value = text;
+        var look = lookIn(parseSettings(text));
+        if (look) themeSel.value = look;                     // show the look the file now has
         setText(status, (existing === null ? 'Created' : 'Updated') + ' settings.txt in ' + where +
-                        '. Add a widget to OBS (or refresh one) and play something.' +
+                        (look ? ' with the ' + look + ' look' : '') +
+                        '. Add widget-now-playing.html to OBS as a browser source (or refresh it) and play something.' +
                         (helper ? ' You can close the setup window now.' : ''), 'ok');
       } catch (e) {
         setText(status, helper ? 'Could not save: ' + e.message + '. Use Download instead.' : describeError(e), 'err');
@@ -412,7 +475,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
       'The setup helper is running, so this saves straight into the widget folder, keeping any other settings you already had.';
   } else if (!canWrite) {
     document.getElementById('saveNote').textContent =
-      'Your browser cannot write files directly (Chrome and Edge can). Download the file and move it into the folder with the widget HTML files.';
+      'Your browser cannot write files directly (Chrome and Edge can). Download the file and move it into the folder with widget-now-playing.html.';
     document.getElementById('downloadBtn').textContent = 'Download settings.txt';
     document.getElementById('downloadBtn').className = '';
     document.getElementById('testDownloadBtn').textContent = 'Download settings.txt';
@@ -471,10 +534,13 @@ the app does not work even though this page hands out a token. Refresh tokens al
   }
 
   clientIdEl.value = loadState('sw_client_id');
-  if (helper && !clientIdEl.value) {
-    // Re-running the setup: start from the Client ID already in settings.txt.
+  if (helper) {
+    // Re-running the setup: start from the Client ID and look already in settings.txt.
     helperRead().then(function (text) {
-      if (text && !clientIdEl.value) clientIdEl.value = parseSettings(text).spotify_client_id || '';
+      if (!text) return;
+      var cfg = parseSettings(text);
+      if (!clientIdEl.value) clientIdEl.value = cfg.spotify_client_id || '';
+      if (lookIn(cfg)) themeSel.value = lookIn(cfg);
     }).catch(function () {});
   }
 
@@ -544,7 +610,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
                   '. Codes expire quickly: redo Step 2 and paste the new URL right away.', 'err');
         return;
       }
-      showResult(settingsText(clientId, data.refresh_token), 'resultStep', 'result');
+      showResult(settingsText(clientId, data.refresh_token, themeSel.value), 'resultStep', 'result');
       setStatus('Token received. Checking that this account can use the app…');
       return checkAccess(data.access_token).then(function (chk) {
         var next;
@@ -617,7 +683,9 @@ the app does not work even though this page hands out a token. Refresh tokens al
       return checkAccess(res.body.access_token).then(function (chk) {
         setText(testEl, ['Token refresh: OK.'].concat(chk.lines).join('\n'), chk.ok ? 'ok' : 'err');
         if (res.body.refresh_token) {
-          showResult(settingsText(cfg.spotify_client_id, res.body.refresh_token, cfg.source, cfg.poll_interval),
+          // The pasted file with the new token in it: everything else (look, poll settings, colours) stays.
+          showResult(mergeSettings(document.getElementById('testInput').value,
+                                   { spotify_client_id: cfg.spotify_client_id, spotify_refresh_token: res.body.refresh_token }),
                      'testResultWrap', 'testResult');
           if (helper) document.getElementById('testSaveBtn').click();   // keep the folder's file current
         }

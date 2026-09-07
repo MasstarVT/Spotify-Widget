@@ -59,21 +59,22 @@ Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotif
 One-time setup, done on your normal desktop (not in OBS):
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), log in, and click **Create app**. Name it anything, add the Redirect URI `http://127.0.0.1:8888/callback`, check **Web API**, and save.
-2. **Windows:** double-click `setup-spotify.bat`. **Linux / macOS:** run `./setup-spotify.sh` (needs Python 3, which every desktop distro and macOS ships). A small window opens and your browser shows the setup page. Paste your app's **Client ID**, click **Authorize**, approve in Spotify, and you are brought straight back: the page checks that the account can use the app and writes `settings.txt` into the widget folder by itself. Close the small window when it says done.
+2. **Windows:** double-click `setup-spotify.bat`. **Linux / macOS:** run `./setup-spotify.sh` (needs Python 3, which every desktop distro and macOS ships). A small window opens and your browser shows the setup page. Paste your app's **Client ID**, click **Authorize**, approve in Spotify, and you are brought straight back: the page checks that the account can use the app and writes `settings.txt` into the widget folder by itself. Pick a look in Step 4 if you want one other than Zune (it saves again on its own), and close the small window when it says done.
 
    The helper is a tiny local web server that listens only on your own computer (127.0.0.1, the address Spotify redirects to), serves only the setup page, and writes only `settings.txt`. Windows may show "Windows protected your PC" for a downloaded `.bat`: choose **More info → Run anyway**. Nothing is installed.
 
-   **Without the helper:** open `tools/spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
+   **Without the helper:** open `tools/spotify-setup.html` directly (double-click it; Chrome or Edge gives the smoothest path). You then paste back the URL Spotify redirects you to, and in Step 4 pick a look, click **Save into the widget folder** and pick the folder once; the page checks it is the right folder, writes `settings.txt` there (keeping any settings you already had), and remembers the folder. In browsers that cannot write files (Firefox, Safari) use **Download** and move the file into the folder yourself.
 3. Either way you end up with a `settings.txt` next to `widget-now-playing.html` that looks like this:
 
    ```
+   theme=zune
    source=auto
    spotify_client_id=YOUR_CLIENT_ID
    spotify_refresh_token=YOUR_REFRESH_TOKEN
    poll_interval=2000
    ```
 
-   Add a line such as `theme=space` to pick a look other than Zune (see [Files and looks](#files-and-looks)).
+   `theme=` is the look (see [Files and looks](#files-and-looks)); `settings.example.txt` lists everything else you can set.
 
 4. Add the widget to OBS as a browser source (see below). Play a song on Spotify — on any device — and it appears in the widget.
 
