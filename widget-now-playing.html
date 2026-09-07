@@ -1478,7 +1478,10 @@
 
   /* ── Put the chosen look on the page ─────────────────────────────── */
   function mount(name) {
-    if (!THEMES[name]) name = 'zune';
+    if (!THEMES[name]) {                      /* not a look this page has: the default, and its values with it */
+      name = 'zune';
+      document.documentElement.setAttribute('data-theme', name);
+    }
     cfg = THEMES[name];
     var tpl = document.querySelector('template[data-theme="' + name + '"]');
     var frag = document.importNode(tpl.content, true);

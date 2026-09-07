@@ -244,7 +244,8 @@ the app does not work even though this page hands out a token. Refresh tokens al
   function loadState(k)    { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function param(url, name) {
     var m = url.match(new RegExp('[?&]' + name + '=([^&#]+)'));
-    return m ? m[1] : '';
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
   }
 
   function settingsText(clientId, refreshToken, theme) {
@@ -470,6 +471,24 @@ the app does not work even though this page hands out a token. Refresh tokens al
 
   wireSaveButtons('saveBtn', 'downloadBtn', 'result', 'saveStatus');
   wireSaveButtons('testSaveBtn', 'testDownloadBtn', 'testResult', 'testSaveStatus');
+
+  // After a test, the helper writes the new token into the folder by itself,
+  // but only when it was the folder's own token that just got used up.
+  // Testing someone else's settings.txt must not replace yours.
+  function autoSaveTest(tested) {
+    var status = document.getElementById('testSaveStatus');
+    helperRead().then(function (existing) {
+      var cur = existing ? parseSettings(existing) : {};
+      if (!existing || cur.spotify_refresh_token === tested.spotify_refresh_token) {
+        document.getElementById('testSaveBtn').click();
+      } else {
+        setText(status, 'Not saved: settings.txt in the widget folder holds a different login, so it was left as it is. ' +
+                        'Click "Save into the widget folder" to replace it with this one.');
+      }
+    }).catch(function (e) {
+      setText(status, 'Could not read settings.txt from the widget folder: ' + e.message + '. Use the buttons above.', 'err');
+    });
+  }
   if (helper) {
     document.getElementById('saveNote').textContent =
       'The setup helper is running, so this saves straight into the widget folder, keeping any other settings you already had.';
@@ -687,7 +706,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
           showResult(mergeSettings(document.getElementById('testInput').value,
                                    { spotify_client_id: cfg.spotify_client_id, spotify_refresh_token: res.body.refresh_token }),
                      'testResultWrap', 'testResult');
-          if (helper) document.getElementById('testSaveBtn').click();   // keep the folder's file current
+          if (helper) autoSaveTest(cfg);               // keep the folder's file current
         }
       });
     }).catch(function () {

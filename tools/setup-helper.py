@@ -297,13 +297,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def local_host(self):
+        """Only requests addressed to this computer by its own name are served.
+        A web page could otherwise point a name of its own at 127.0.0.1 (DNS
+        rebinding) and read or write settings.txt through this server as if
+        it were the setup page."""
+        host = (self.headers.get('Host') or '').strip().lower()
+        return host.rsplit(':', 1)[0] in ('127.0.0.1', 'localhost')
+
     def do_GET(self):
         path = self.path.split('?')[0]
-        if path in ('/', '/callback', '/spotify-setup.html'):
+        if not self.local_host():
+            self.reply(403, 'text/plain; charset=utf-8', b'wrong host')
+        elif path in ('/', '/callback', '/spotify-setup.html'):
             # The setup page, with a marker that tells it a helper is running.
             with open(PAGE, 'r', encoding='utf-8') as f:
                 html = f.read()
             marker = json.dumps({'token': TOKEN, 'port': PORT, 'version': local_version(), 'updateUrl': update_url()})
+            marker = marker.replace('</', '<\\/')       # nothing in it may end the script element
             inject = '<script>window.SETUP_HELPER = %s;</script>\n</head>' % marker
             self.reply(200, 'text/html; charset=utf-8', html.replace('</head>', inject, 1).encode('utf-8'))
         elif path == '/settings':
@@ -318,9 +329,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         global SAVED
         path = self.path.split('?')[0]
-        length = int(self.headers.get('Content-Length') or 0)
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            length = 0
         body = self.rfile.read(length)
-        if path != '/save':
+        if not self.local_host():
+            self.reply(403, 'text/plain; charset=utf-8', b'wrong host')
+        elif path != '/save':
             self.reply(404, 'text/plain; charset=utf-8', b'not found')
         elif self.headers.get('X-Setup-Token') != TOKEN:
             self.reply(403, 'text/plain; charset=utf-8', b'bad token')

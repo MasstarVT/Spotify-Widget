@@ -126,6 +126,7 @@
   var refreshing       = false;
   var polling          = false;
   var spotifyFails     = 0;
+  var authFails        = 0;      // 401s in a row: the first gets a refresh at once, more count as failures
   var spotifyDeadUntil = 0;      // retry Spotify after this (repeated failures)
   var spotifyWaitUntil = 0;      // don't poll before this (429, or shared from another widget)
   var rateLimitMs      = 0;      // current 429 wait; doubles while the limit persists
@@ -452,7 +453,7 @@
   function readStore() {
     try {
       var s = JSON.parse(localStorage.getItem(storeKey()));
-      return (s && s.seed === settings.spotify_refresh_token) ? s : null;
+      return (s && typeof s === 'object' && s.seed === settings.spotify_refresh_token) ? s : null;
     } catch (e) { return null; }
   }
 
@@ -469,6 +470,7 @@
     // recovers when Spotify or the network comes up later.
     spotifyDeadUntil = Date.now() + SPOTIFY_RETRY_MS;
     spotifyFails     = 0;
+    authFails        = 0;
     accessToken      = null;
     lastSnipRaw      = null;   // re-read Snip from scratch so the fallback shows the current track
   }
@@ -493,7 +495,6 @@
 
     // Another widget in this OBS may already have refreshed: reuse its tokens.
     if (syncAccessToken()) {
-      spotifyFails = 0;
       if (done) done(true);
       return;
     }
@@ -516,7 +517,8 @@
       if (data && data.access_token) {
         accessToken      = data.access_token;
         staleAccessToken = null;
-        spotifyFails     = 0;
+        // (spotifyFails is only reset by a successful poll: a login that
+        // works while every request after it fails must still back off)
         // Spotify rotates refresh tokens (each is single-use): keep the newest.
         if (data.refresh_token) refreshToken = data.refresh_token;
         writeStore({
@@ -604,7 +606,10 @@
   }
 
   function readPlayer() {
-    try { return JSON.parse(localStorage.getItem(playerKey())) || null; } catch (e) { return null; }
+    try {
+      var p = JSON.parse(localStorage.getItem(playerKey()));
+      return p && typeof p === 'object' ? p : null;
+    } catch (e) { return null; }
   }
 
   function writePlayer(fields) {
@@ -616,10 +621,12 @@
   }
 
   // A 429 or a hard failure seen by any widget parks all of them, with the
-  // same message. Returns the shared record.
+  // same message. Returns the shared record. A wait that is already over
+  // (left behind by an earlier OBS session, say) is ignored, message and
+  // all: showing "retrying in 30 s" from last week would be wrong.
   function syncSharedWait() {
     var shared = readPlayer();
-    if (shared && shared.waitUntil > spotifyWaitUntil) {
+    if (shared && shared.waitUntil > spotifyWaitUntil && shared.waitUntil > Date.now()) {
       spotifyWaitUntil = shared.waitUntil;
       lastSnipRaw      = null;               // let Snip take over meanwhile
       if (shared.error) {
@@ -640,7 +647,8 @@
     var key = STORE_KEY + ':requests:' + settings.spotify_refresh_token;
     var now = Date.now(), stamps = [];
     try { stamps = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { /* none yet */ }
-    stamps = stamps.filter(function (t) { return now - t < HOUR_MS; });
+    if (!Array.isArray(stamps)) stamps = [];   // a damaged record must not stop the widget
+    stamps = stamps.filter(function (t) { return typeof t === 'number' && now - t < HOUR_MS; });
     var wait = 0;
     if (stamps.length >= MAX_REQUESTS_PER_HOUR) wait = stamps[stamps.length - MAX_REQUESTS_PER_HOUR] + HOUR_MS - now;
     var inWindow = stamps.filter(function (t) { return now - t < RATE_WINDOW_MS; });
@@ -803,8 +811,10 @@
         return;
       }
       handlePlayerError(xhr.status, xhr.responseText, xhr);
+      // A first 401: refresh and ask again now. Anything else, including a
+      // 401 on a token that was just refreshed, waits a poll_interval.
       var retryAt = Math.max(spotifyWaitUntil, spotifyDeadUntil,
-                             accessToken ? t + settings.poll_interval : t);   // 401: refresh and ask again now
+                             accessToken || authFails > 1 ? t + settings.poll_interval : t);
       writePlayer({ doneAt: t, nextAt: retryAt });
       scheduleSpotify(retryAt);
     };
@@ -818,10 +828,22 @@
 
   function render(status, data, st) {
     spotifyFails = 0;
+    authFails    = 0;
     spotifyError = '';
     rateLimitMs  = 0;
-    if (st.kind === 'track') emit(spotifyTrack(data));
-    else idle(Date.now() - st.changedAt);      // nothing playing, ad break, or unknown item type
+    if (st.kind === 'track') {
+      // (a shared answer whose text did not parse: keep what is shown)
+      if (data && data.item) emit(spotifyTrack(data));
+    } else {
+      idle(Date.now() - st.changedAt);         // nothing playing, ad break, or unknown item type
+    }
+  }
+
+  function countFailure(status) {
+    spotifyFails++;
+    if (spotifyFails >= 5) {
+      spotifyFailed(status ? 'Spotify error (HTTP ' + status + ')' : 'Spotify unreachable');
+    }
   }
 
   function handlePlayerError(status, text, xhr) {
@@ -834,15 +856,16 @@
         ? 'Spotify: this account is not added to the app'
         : 'Spotify: ' + (msg || 'access denied'));
     } else if (status === 401) {
-      staleAccessToken = accessToken;        // expired: refresh right away
+      // Expired: refresh right away. When the token that was just refreshed
+      // is rejected as well, that is a failure like any other, so the
+      // retries slow down instead of refreshing and asking in a tight loop.
+      staleAccessToken = accessToken;
       accessToken = null;
+      if (++authFails > 1) countFailure(status);
     } else if (status === 429) {
       rateLimited(xhr, text);
     } else {
-      spotifyFails++;
-      if (spotifyFails >= 5) {
-        spotifyFailed(status ? 'Spotify error (HTTP ' + status + ')' : 'Spotify unreachable');
-      }
+      countFailure(status);
     }
   }
 

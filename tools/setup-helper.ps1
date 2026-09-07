@@ -365,12 +365,22 @@ while ((Get-Date) -lt $deadline) {
       }
       $body = $bodyMs.ToArray()
 
-      if ($method -eq 'GET' -and ($path -eq '/' -or $path -eq '/callback' -or $path -eq '/spotify-setup.html')) {
+      # Only requests addressed to this computer by its own name are served.
+      # A web page could otherwise point a name of its own at 127.0.0.1 (DNS
+      # rebinding) and read or write settings.txt through this server as if
+      # it were the setup page.
+      $hostName = ''
+      if ($headers.ContainsKey('host')) { $hostName = ($headers['host'] -replace ':\d+$', '').Trim().ToLower() }
+      $localHost = ($hostName -eq '127.0.0.1' -or $hostName -eq 'localhost')
+
+      if (-not $localHost) {
+        Send-Text $stream 403 'Forbidden' 'wrong host'
+      } elseif ($method -eq 'GET' -and ($path -eq '/' -or $path -eq '/callback' -or $path -eq '/spotify-setup.html')) {
         # The setup page, with a marker that tells it a helper is running.
         $html    = [System.IO.File]::ReadAllText($pagePath, $utf8)
-        $version = (Get-LocalVersion).Replace("'", '')
-        $url     = (Get-UpdateUrl).Replace("'", '')
-        $inject  = "<script>window.SETUP_HELPER = { token: '$token', port: $Port, version: '$version', updateUrl: '$url' };</script>`r`n</head>"
+        $marker  = @{ token = $token; port = $Port; version = [string](Get-LocalVersion); updateUrl = [string](Get-UpdateUrl) } | ConvertTo-Json -Compress
+        $marker  = $marker.Replace('</', '<\/')       # nothing in it may end the script element
+        $inject  = "<script>window.SETUP_HELPER = $marker;</script>`r`n</head>"
         $html    = $html.Replace('</head>', $inject)
         Send-Http $stream 200 'OK' 'text/html; charset=utf-8' $utf8.GetBytes($html)
       } elseif ($method -eq 'GET' -and $path -eq '/settings') {
