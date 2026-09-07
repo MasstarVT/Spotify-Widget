@@ -13,6 +13,7 @@ on:
     branches: [main]
     paths-ignore:
       - '.github/**'      # workflow-only changes do not change the zip
+  workflow_dispatch:      # run by hand: publishes the site again for the current release
 
 permissions:
   contents: write        # tags and releases
@@ -36,14 +37,24 @@ jobs:
 
       - name: Pick a tag
         id: tag
+        # A commit that is already released (a manual run, or a re-run) keeps
+        # its tag: the site is published again, no second release is made.
         run: |
+          have=$(git tag --points-at HEAD -l 'V[0-9]*' | sort -V | tail -1)
+          if [ -n "$have" ]; then
+            echo "tag=$have" >> "$GITHUB_OUTPUT"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           last=$(git tag -l 'V[0-9]*' 'v[0-9]*' | sed -E 's/^[vV]//' | grep -E '^[0-9]+$' | sort -n | tail -1)
           # The hand-made "Release V1" was tagged plain "Release": count it as 1.
           if [ -z "$last" ] && git rev-parse -q --verify refs/tags/Release >/dev/null; then last=1; fi
           n=$(( ${last:-0} + 1 ))
           echo "tag=V$n" >> "$GITHUB_OUTPUT"
+          echo "released=false" >> "$GITHUB_OUTPUT"
 
       - name: Write release notes
+        if: steps.tag.outputs.released != 'true'
         # Before the new tag exists, so "since the previous release" is right.
         run: |
           prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
@@ -59,6 +70,7 @@ jobs:
           } > notes.md
 
       - name: Tag the commit
+        if: steps.tag.outputs.released != 'true'
         # git archive below stamps WIDGET_VERSION from the nearest tag.
         run: |
           git tag "${{ steps.tag.outputs.tag }}"
@@ -77,6 +89,7 @@ jobs:
           grep -m1 'WIDGET_VERSION =' build/now-playing-source.js
 
       - name: Create release
+        if: steps.tag.outputs.released != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -93,6 +106,6 @@ jobs:
       - name: Publish to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
-        # Fails until Pages is switched on (repo Settings > Pages > Source: GitHub Actions),
-        # which needs a public repo on the free plan. The release above is done by then.
+        # Needs Pages switched on once (repo Settings > Pages > Source: GitHub Actions;
+        # a public repo on the free plan). The release above is done by then either way.
         continue-on-error: true
