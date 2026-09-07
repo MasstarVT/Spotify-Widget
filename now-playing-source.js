@@ -48,6 +48,16 @@
   var PLAYER_URL    = 'https://api.spotify.com/v1/me/player/currently-playing?additional_types=track,episode';
   var STORE_KEY     = 'now-playing-spotify-auth';
 
+  /* auto-update */
+  var UPDATE_URL     = 'https://masstarvt.github.io/Spotify-Widget/';   // where each release is published
+  // Stamped by `git archive` when a release is built (e.g. V7). The literal
+  // placeholder means a working copy: those never auto-update.
+  var WIDGET_VERSION = '$Format:%(describe:tags,match=V[0-9]*)$';
+  var UPDATE_CHECK_TIMEOUT_MS = 3000;   // version.json: tiny, so a slow network costs at most this
+  var UPDATE_FETCH_TIMEOUT_MS = 5000;   // the widget page and script, fetched together
+  var UPDATE_RECHECK_MS = 600000;       // one version check per OBS per 10 min, shared by all widgets
+  var UPDATE_KEY = STORE_KEY + ':update';
+
   var REQUEST_TIMEOUT_MS = 10000;  // give up on a Spotify request after this long
   var SPOTIFY_RETRY_MS   = 30000;  // how long to back off after repeated failures
   var PLACEHOLDER_MS     = 3000;   // show the placeholder if nothing answers by then
@@ -87,7 +97,10 @@
     spotify_refresh_token: '',
     poll_interval: MIN_POLL_MS,
     poll_interval_max: DEFAULT_MAX_POLL_MS,
+    auto_update: 'on',
+    update_url: UPDATE_URL,
   };
+  var cssVars = [];             // [name, value] from --name=value lines in settings.txt
 
   var callback  = null;
   var lastTrack = null;
@@ -193,8 +206,15 @@
           if (!line || line.charAt(0) === '#') return;
           var eq = line.indexOf('=');
           if (eq === -1) return;
-          var key = line.slice(0, eq).trim().toLowerCase();
+          var key = line.slice(0, eq).trim();
+          var css = /^(?:([a-z0-9-]+)\.)?(--[a-z0-9-]+)$/i.exec(key);
+          if (css) {                                   // --name=value, or zune.--name=value for one widget
+            // no comment stripping here: colours look like "#1DB954"
+            if (!css[1] || css[1].toLowerCase() === widgetName()) cssVars.push([css[2], line.slice(eq + 1).trim()]);
+            return;
+          }
           var val = line.slice(eq + 1).replace(/\s#.*$/, '').trim();   // " # comment" after a value
+          key = key.toLowerCase();
           if (key === 'poll_interval' || key === 'poll_interval_max') {
             var n = parseInt(val, 10);
             if (n >= MIN_POLL_MS) settings[key] = n;                  // below the floor: keep the default
@@ -207,8 +227,146 @@
         });
       }
       if (settings.poll_interval_max < settings.poll_interval) settings.poll_interval_max = settings.poll_interval;
+      // https only, so a copied settings.txt cannot point the updater at an
+      // unprotected address; plain http is allowed for this computer (testing).
+      if (!/^https:\/\//i.test(settings.update_url) &&
+          !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(settings.update_url)) settings.update_url = UPDATE_URL;
+      if (settings.update_url.slice(-1) !== '/') settings.update_url += '/';
       done();
     });
+  }
+
+  /* ── this page ──────────────────────────────────────────────────────── */
+
+  function pageName() {                    // e.g. "zune-now-playing.html"
+    var p = (typeof location !== 'undefined' && location.pathname) || '';
+    try { p = decodeURIComponent(p); } catch (e) { /* keep as is */ }
+    return p.slice(p.lastIndexOf('/') + 1);
+  }
+
+  function widgetName() {                  // e.g. "zune"
+    return pageName().replace(/-now-playing\.html$/i, '').toLowerCase();
+  }
+
+  // The --name=value lines from settings.txt become CSS variables on <html>,
+  // above the widget's own :root block, so colours and positions live with
+  // the credentials and survive updates.
+  function applyStyles() {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    var root = document.documentElement;
+    cssVars.forEach(function (v) {
+      try { root.style.setProperty(v[0], v[1]); } catch (e) { /* not a usable value */ }
+    });
+  }
+
+  /* ── auto-update ────────────────────────────────────────────────────── */
+
+  function versionNumber(s) {              // "V7" or "V7-2-gabc123" -> 7; anything else -> null
+    var m = /^v(\d+)/i.exec(String(s || '').trim());
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function stampOf(js) {                   // the WIDGET_VERSION inside a copy of this file
+    var m = /WIDGET_VERSION\s*=\s*'([^']*)'/.exec(js || '');
+    return m ? m[1] : '';
+  }
+
+  function readJSON(key) {
+    try { return JSON.parse(localStorage.getItem(key)) || null; } catch (e) { return null; }
+  }
+
+  function writeJSON(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ }
+  }
+
+  function fetchText(url, timeoutMs, done) {   // done(text) or done(null) on any failure
+    var finished = false;
+    function finish(text) { if (!finished) { finished = true; done(text); } }
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.timeout = timeoutMs;
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        finish(xhr.status === 200 && xhr.responseText ? xhr.responseText : null);
+      };
+      xhr.send();
+    } catch (e) { finish(null); }
+  }
+
+  // What the new page must keep from this one: the :root block at the top
+  // of the widget's own stylesheet (the README's place for colour edits),
+  // and any stylesheet added after it, such as the Custom CSS OBS injects.
+  function carriedStyles() {
+    if (typeof document === 'undefined') return '';
+    var styles = document.getElementsByTagName('style'), out = '';
+    for (var i = 0; i < styles.length; i++) {
+      var text = styles[i].textContent || '';
+      if (text.indexOf('<\/style') !== -1 || text.indexOf('<\/script') !== -1) continue;
+      if (i === 0) {
+        var m = /:root\s*\{[^}]*\}/.exec(text);
+        if (m) out += '<style id="now-playing-local-root">\n/* your values from the local copy of this widget */\n' + m[0] + '\n</style>\n';
+      } else {
+        out += '<style>' + text + '</style>\n';
+      }
+    }
+    return out;
+  }
+
+  // Run the newest release from the web instead of these local files when
+  // there is one. Called once, before any source starts, so nothing needs
+  // stopping: the page is replaced in place with document.write and keeps
+  // its address, so settings.txt, Snip files and the stored login keep
+  // working. The new page carries this one's customisations (see above) and
+  // gets the new script inlined, checked to be a stamped copy of this file.
+  // Anything that goes wrong means the local files run, as they always did.
+  // Skipped in working copies (unstamped version), with auto_update=off,
+  // and in a page a previous check swapped in.
+  function checkForUpdate(done) {
+    var local = versionNumber(WIDGET_VERSION);
+    if (window.NOW_PLAYING_UPDATED || local === null ||
+        /^(off|no|false|0)$/i.test(settings.auto_update) ||
+        !/-now-playing\.html$/i.test(pageName())) { done(); return; }
+    var base = settings.update_url;
+    // One check per OBS per UPDATE_RECHECK_MS: scene switches that reload
+    // widgets, and several widgets, share one answer.
+    var seen = readJSON(UPDATE_KEY);
+    if (seen && seen.version && Date.now() - seen.at < UPDATE_RECHECK_MS) { decide(seen.version); return; }
+    fetchText(base + 'version.json?_=' + Date.now(), UPDATE_CHECK_TIMEOUT_MS, function (text) {
+      var version = null;
+      try { version = String(JSON.parse(text).version || ''); } catch (e) { /* no usable answer */ }
+      if (version) writeJSON(UPDATE_KEY, { at: Date.now(), version: version });
+      decide(version);
+    });
+
+    function decide(version) {
+      var remote = versionNumber(version);
+      if (remote === null || remote <= local) { done(); return; }
+      var q = '?v=' + encodeURIComponent(version), html = null, js = null, left = 2;
+      fetchText(base + pageName() + q, UPDATE_FETCH_TIMEOUT_MS, function (t) { html = t; if (--left === 0) swap(); });
+      fetchText(base + 'now-playing-source.js' + q, UPDATE_FETCH_TIMEOUT_MS, function (t) { js = t; if (--left === 0) swap(); });
+
+      function swap() {
+        var marker = '<script src="now-playing-source.js"><\/script>';
+        // (the closing tag below is written with an escape so this file can be
+        // inlined itself: an HTML parser ends an inline script at that text)
+        if (!html || html.split(marker).length !== 2 ||
+            !js || js.indexOf('NowPlayingSource') === -1 || js.indexOf('<\/script') !== -1 ||
+            versionNumber(stampOf(js)) !== remote) { done(); return; }
+        html = html.replace(marker, function () { return '<script>\n' + js + '\n<\/script>'; });
+        var extra = carriedStyles(), head = html.indexOf('</head>');
+        html = head === -1 ? extra + html : html.slice(0, head) + extra + html.slice(head);
+        window.NOW_PLAYING_UPDATED = { version: version, from: WIDGET_VERSION };
+        try {
+          document.open();
+          document.write(html);
+          document.close();
+        } catch (e) {
+          window.NOW_PLAYING_UPDATED = null;
+          done();
+        }
+      }
+    }
   }
 
   function spotifyConfigured() {
@@ -743,23 +901,31 @@
     scheduleSpotify(Date.now());
   }
 
+  function begin() {
+    // If no source produces data shortly after startup, show a
+    // "not running" placeholder instead of staying invisible.
+    setTimeout(function () {
+      if (!lastTrack) emitPlaceholder(placeholderReason());
+    }, PLACEHOLDER_MS);
+    refreshToken = settings.spotify_refresh_token;
+    if (wantSpotify()) {
+      try { window.addEventListener('storage', onStorage); } catch (e) { /* no storage events */ }
+      spotifyStep();                         // shows a shared answer at once, or polls
+    } else {
+      tick();
+    }
+    setInterval(tick, settings.poll_interval);
+  }
+
   window.NowPlayingSource = {
+    version: WIDGET_VERSION,
     start: function (cb) {
       callback = cb;
-      // If no source produces data shortly after startup, show a
-      // "not running" placeholder instead of staying invisible.
-      setTimeout(function () {
-        if (!lastTrack) emitPlaceholder(placeholderReason());
-      }, PLACEHOLDER_MS);
       loadSettings(function () {
-        refreshToken = settings.spotify_refresh_token;
-        if (wantSpotify()) {
-          try { window.addEventListener('storage', onStorage); } catch (e) { /* no storage events */ }
-          spotifyStep();                     // shows a shared answer at once, or polls
-        } else {
-          tick();
-        }
-        setInterval(tick, settings.poll_interval);
+        checkForUpdate(function () {         // returns at once unless a newer release replaces this page
+          applyStyles();
+          begin();
+        });
       });
     },
     getLastTrack: function () { return lastTrack; },

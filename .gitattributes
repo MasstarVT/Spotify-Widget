@@ -6,3 +6,6 @@
 
 # Not part of the distributable Widget.zip (git archive and the release workflow)
 .github export-ignore
+
+# Release builds get the version stamped into WIDGET_VERSION (git describe)
+now-playing-source.js export-subst

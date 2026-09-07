@@ -12,6 +12,9 @@
     --artist-color:  rgba(255,255,255,0.5); /* artist name fallback color (auto-tinted from art when available) */
     --title-size:    15px;                 /* track title font size     */
     --artist-size:   12px;                 /* artist name font size     */
+    --bottom:        44px;                     /* distance from the bottom edge     */
+    --left:          44px;                     /* distance from the left edge       */
+    --paused-filter: grayscale(1) opacity(0.55); /* look while paused (grayed out)    */
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -27,8 +30,8 @@
   /* ─── Widget ────────────────────────────────────────────────────────── */
   .am-widget {
     position: fixed;
-    bottom: 44px;
-    left: 44px;
+    bottom: var(--bottom);
+    left: var(--left);
     width: 310px;
     border-radius: 18px;
     padding: 14px;
@@ -200,7 +203,7 @@
   /* ─── Paused / idle (classes set by the script) ─────────────────────── */
   .am-widget.is-paused .am-bar { animation-play-state: paused; }
   .am-widget.is-idle   .am-bars { visibility: hidden; }
-  .am-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
+  .am-widget.is-paused { filter: var(--paused-filter); }   /* grayed out while paused: --paused-filter in :root sets the look */
 </style>
 </head>
 <body>

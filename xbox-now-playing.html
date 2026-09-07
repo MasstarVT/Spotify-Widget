@@ -15,6 +15,9 @@
     --mc-border:   rgba(93, 255, 120, 0.55);
     --mc-title-size:  18px;   /* track title font size  */
     --mc-artist-size: 13px;   /* artist name font size  */
+    --bottom:        44px;                     /* distance from the bottom edge     */
+    --left:          44px;                     /* distance from the left edge       */
+    --paused-filter: grayscale(1) opacity(0.55); /* look while paused (grayed out)    */
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,8 +32,8 @@
   /* ─── Widget shell ──────────────────────────────────────────────── */
   .mc-widget {
     position: fixed;
-    bottom: 44px;
-    left: 44px;
+    bottom: var(--bottom);
+    left: var(--left);
     width: 350px;
     background:
       radial-gradient(ellipse 70% 50% at 10% 0%,   rgba(93,255,120,0.05) 0%, transparent 100%),
@@ -247,7 +250,7 @@
   /* ─── Paused / idle (classes set by the script) ─────────────────────── */
   .mc-widget.is-paused .mc-eq-bar { animation-play-state: paused; }
   .mc-widget.is-idle   .mc-eq { visibility: hidden; }
-  .mc-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
+  .mc-widget.is-paused { filter: var(--paused-filter); }   /* grayed out while paused: --paused-filter in :root sets the look */
 </style>
 </head>
 <body>

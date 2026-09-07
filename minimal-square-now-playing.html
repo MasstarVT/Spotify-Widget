@@ -13,6 +13,9 @@
     --artist-color:  rgba(255,255,255,0.6); /* artist name color        */
     --title-size:    20px;            /* track title font size          */
     --artist-size:   15px;            /* artist name font size          */
+    --bottom:        44px;                     /* distance from the bottom edge     */
+    --left:          44px;                     /* distance from the left edge       */
+    --paused-filter: grayscale(1) opacity(0.55); /* look while paused (grayed out)    */
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,8 +29,8 @@
 
   .widget {
     position: fixed;
-    bottom: 44px;
-    left: 44px;
+    bottom: var(--bottom);
+    left: var(--left);
     width: 200px;
     opacity: 0;
     transform: translateY(10px);
@@ -121,7 +124,7 @@
   /* ─── Paused / idle ─────────────────────────────────────────────────── */
   /* The script adds .is-paused (paused) and .is-idle ("Nothing playing") to
      the widget; add rules here if you want those states to look different. */
-  .widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
+  .widget.is-paused { filter: var(--paused-filter); }   /* grayed out while paused: --paused-filter in :root sets the look */
 </style>
 </head>
 <body>

@@ -16,6 +16,9 @@
     --sp-border:   rgba(0, 212, 255, 0.38);
     --sp-title-size:  13px;    /* track title font size  */
     --sp-artist-size: 11.5px;  /* artist name font size  */
+    --bottom:        44px;                     /* distance from the bottom edge     */
+    --left:          44px;                     /* distance from the left edge       */
+    --paused-filter: grayscale(1) opacity(0.55); /* look while paused (grayed out)    */
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,8 +33,8 @@
   /* ─── Widget shell ──────────────────────────────────────────────── */
   .sp-widget {
     position: fixed;
-    bottom: 44px;
-    left: 44px;
+    bottom: var(--bottom);
+    left: var(--left);
     width: 360px;
     background: var(--sp-bg);
     border: 1px solid var(--sp-border);
@@ -359,7 +362,7 @@
   /* ─── Paused / idle (classes set by the script) ─────────────────────── */
   .sp-widget.is-paused .sp-eq-bar { animation-play-state: paused; }
   .sp-widget.is-idle   .sp-eq { visibility: hidden; }
-  .sp-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
+  .sp-widget.is-paused { filter: var(--paused-filter); }   /* grayed out while paused: --paused-filter in :root sets the look */
 </style>
 </head>
 <body>

@@ -111,6 +111,7 @@ the app does not work even though this page hands out a token. Refresh tokens al
 
 <div class="step">
   <h2 style="margin-top:0">Troubleshooting — test a settings.txt</h2>
+  <p id="versionNote" class="note" style="display:none"></p>
   <p>Widget stuck on "Nothing playing" with a reason underneath? Load the <code>settings.txt</code>
   from the widget folder (or paste its contents, yours or a friend's) and this page will do exactly what
   the widget does and show you Spotify's answers.</p>
@@ -154,6 +155,41 @@ the app does not work even though this page hands out a token. Refresh tokens al
   }
   showAll('.when-helper', !!helper);
   showAll('.when-manual', !helper);
+
+  // Which release the widget files in the folder are (the helper reads it
+  // from now-playing-source.js), and whether a newer one is out. Quiet when
+  // offline or when nothing has been published yet.
+  (function () {
+    var el   = document.getElementById('versionNote');
+    var base = (helper && helper.updateUrl) || 'https://masstarvt.github.io/Spotify-Widget/';
+    if (!/^https?:\/\//i.test(base)) return;
+    if (base.slice(-1) !== '/') base += '/';
+    var local = helper && helper.version && !/^\$Format/.test(helper.version) ? helper.version : '';
+    function num(s) { var m = /^v(\d+)/i.exec(String(s || '').trim()); return m ? parseInt(m[1], 10) : null; }
+    var ctrl = new AbortController();
+    setTimeout(function () { ctrl.abort(); }, 5000);
+    fetch(base + 'version.json?_=' + Date.now(), { cache: 'no-store', signal: ctrl.signal })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var latest = String(j.version || ''), ln = num(local), rn = num(latest);
+        if (rn === null) return;
+        if (ln !== null && rn > ln) {
+          el.textContent = 'The widget files in this folder are ' + local + ' and ' + latest + ' is out. ' +
+            'Run update-widget.bat (Windows) or update-widget.sh (Linux/macOS) in the widget folder to update them; ' +
+            'widgets in OBS switch to ' + latest + ' by themselves unless settings.txt says auto_update=off.';
+        } else if (ln !== null) {
+          el.textContent = 'Widget files: ' + local + ' (the latest release).';
+        } else {
+          el.textContent = 'Latest release: ' + latest + '. ';
+          var a = document.createElement('a');
+          a.href = 'https://github.com/MasstarVT/Spotify-Widget/releases/latest';
+          a.textContent = 'Download Widget.zip';
+          el.appendChild(a);
+        }
+        el.style.display = '';
+      })
+      .catch(function () { /* offline, or not published yet */ });
+  }());
 
   function b64url(bytes) {
     var s = '';

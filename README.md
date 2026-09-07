@@ -15,6 +15,7 @@ All widgets share `now-playing-source.js`, which picks the source based on `sett
 |---|---|
 | `setup-spotify.bat`, `setup-spotify.sh` | One-click Spotify setup for Windows and Linux/macOS (run the helper, then `spotify-setup.html` does the rest) |
 | `spotify-setup.html` | The setup page itself; also works on its own, opened directly in a browser |
+| `update-widget.bat`, `update-widget.sh` | One click to bring the files in the folder up to the latest release (see [Updating](#updating)) |
 | `zune-now-playing.html` | Zune: accent bar, large title, dark panel |
 | `spotify-now-playing.html` | Spotify-style card with equalizer bars |
 | `apple-music-now-playing.html` | Apple Music card, tinted from the album art |
@@ -28,6 +29,12 @@ All widgets share `now-playing-source.js`, which picks the source based on `sett
 | `space-now-playing.html` | Starfield, orbit ring, and scanner line |
 
 Widgets other than Zune, Spotify, Apple Music, iPod, and Basic load their fonts from Google Fonts, so they need internet access when OBS starts; offline they fall back to a system font.
+
+---
+
+## Download
+
+Get **Widget.zip** from the [latest release](https://github.com/MasstarVT/Spotify-Widget/releases/latest) and unzip it into a folder of its own. Everything below happens in that folder, and the widgets keep themselves up to date from there (see [Updating](#updating)).
 
 ---
 
@@ -203,23 +210,44 @@ The widget appears in the **bottom-left corner** of the scene. Reposition or sca
 
 ---
 
+## Updating
+
+Every change to the widgets is published as a release, and installed widgets keep up by themselves:
+
+- **In OBS, automatically.** When a widget loads it asks the release site which version is newest (one tiny request, at most once per 10 minutes for all the widgets in that OBS). If there is a newer one it fetches that widget's page and script (about 50 KB) and runs them in place of the local files, keeping `settings.txt`, your `--name=value` style lines, any values you changed in the file's `:root` block, and OBS's Custom CSS. Nothing is written to disk. Offline, or if anything about the download looks wrong, the local files run as they are.
+- **The files in the folder, with one click.** Double-click `update-widget.bat` (Windows) or run `./update-widget.sh` (Linux / macOS, needs Python 3). It downloads the newest `Widget.zip`, copies every file it is about to replace into `backup\<version>\`, and replaces them, leaving `settings.txt` alone and carrying the `:root` block of each widget file over into the new one. Run it when the setup page says a newer release is out, or whenever you like: it does nothing when you are already current.
+- **Turning it off.** `auto_update=off` in `settings.txt` makes the widgets always run the files as they are. A git checkout of the repository never auto-updates (its version is not stamped in), so use `git pull` there.
+
+The update site is the repository's GitHub Pages, published by the same workflow that makes the release. Everyone's OBS runs what the `main` branch publishes, so treat every push to `main` as a release. Opening a widget in a normal browser may swap in the newest page as well; it then shows the same placeholder as before, since browsers cannot read `settings.txt` from a `file://` page.
+
+---
+
 ## Customization
 
-### Colors and sizes
+### Colors, sizes, position
 
-Every widget starts with a `:root` block at the very top of its `<style>` that holds its colors and font sizes — change those values and everything that depends on them updates. The Zune widget, for example:
+Every widget starts with a `:root` block at the very top of its `<style>` that holds its colors, font sizes, position, and paused look — change those values and everything that depends on them updates. The Zune widget, for example:
 
 ```css
 :root {
-  --accent-rgb:   255, 69, 0;                /* main accent (bar, glow, rule) as R, G, B */
-  --accent-2:     #E60073;                   /* gradient end / art fill tone   */
-  --label-rgb:    255, 106, 51;              /* "now playing" label text as R, G, B */
-  --title-rgb:    255, 255, 255;             /* track title text as R, G, B    */
-  --artist-color: rgba(255, 255, 255, 0.85); /* artist name text               */
-  --title-size:   38px;                      /* track title font size          */
-  --artist-size:  15px;                      /* artist name font size          */
+  --accent-rgb:    255, 69, 0;                 /* main accent (bar, glow, rule) as R, G, B */
+  --accent-2:      #E60073;                    /* gradient end / art fill tone   */
+  --label-rgb:     255, 106, 51;               /* "now playing" label text as R, G, B */
+  --title-rgb:     255, 255, 255;              /* track title text as R, G, B    */
+  --artist-color:  rgba(255, 255, 255, 0.85);  /* artist name text               */
+  --title-size:    38px;                       /* track title font size          */
+  --artist-size:   15px;                       /* artist name font size          */
+  --bottom:        52px;                       /* distance from the bottom edge  */
+  --left:          52px;                       /* distance from the left edge    */
+  --paused-filter: grayscale(1) opacity(0.55); /* look while paused              */
+  --scroll-width:  420px;                      /* width of the scrolling title area */
 }
 ```
+
+There are two places to set them:
+
+- **`settings.txt`** (recommended): a line `--title-size=40px` sets that variable for every widget in the folder, and `zune.--accent-rgb=0, 200, 255` sets it for one widget only. These lines live next to your credentials, so they survive every update. `settings.example.txt` has examples.
+- **The widget file itself**: edit the `:root` block. Values there are kept across updates too (the automatic update carries the block over, and `update-widget` merges it into the new file), but a value set in `settings.txt` wins over it.
 
 The `-rgb` values are plain red, green, blue numbers (0–255) rather than hex so the glows and shadows can be derived from them in every OBS version.
 
@@ -231,18 +259,20 @@ The `-rgb` values are plain red, green, blue numbers (0–255) rather than hex s
 | `--title-rgb` | Large track title text and its glow |
 | `--artist-color` | Artist name below the title |
 | `--title-size` / `--artist-size` | Font sizes |
+| `--bottom` / `--left` | Position on the canvas (every widget has these) |
+| `--paused-filter` | How the widget looks while paused: gray and faded by default (every widget) |
+| `--scroll-width` | Width of the scrolling title area (Zune only; other widgets scroll within their card width) |
 
 ### Other settings
 
 | What to change | What to edit |
 |---|---|
-| Widget position | `bottom` and `left` values on the widget's outer rule (`.zune-widget`, `.sp-widget`, `.widget`, …) |
-| Scroll area width (Zune) | `width` on `.zune-title-wrap` (default `420px`); other widgets scroll within their card width |
 | Poll interval | `poll_interval` and `poll_interval_max` in `settings.txt` (default `2000` and `8000` ms) |
+| Automatic updates | `auto_update` in `settings.txt` (default `on`). See [Updating](#updating) |
 
 ### Paused and idle looks
 
-The script adds the class `is-paused` to the widget while playback is paused (and while it shows "Nothing playing"), and `is-idle` for the "Nothing playing" state only. While paused the whole widget is grayed out and faded, and widgets with equalizer bars freeze them; while idle the bars are hidden. Each widget has a short "Paused / idle" section at the end of its CSS where you can change that: the `filter: grayscale(1) opacity(0.55)` line controls how gray and how faded the paused look is, and you could hide the whole widget while idle instead.
+The script adds the class `is-paused` to the widget while playback is paused (and while it shows "Nothing playing"), and `is-idle` for the "Nothing playing" state only. While paused the whole widget is grayed out and faded (that is `--paused-filter`), and widgets with equalizer bars freeze them; while idle the bars are hidden. Each widget has a short "Paused / idle" section at the end of its CSS where you could hide the whole widget while idle instead.
 
 ---
 

@@ -15,6 +15,9 @@
     --px-muted:  #555566;   /* artist name                            */
     --px-title-size: 14px;  /* track title font size                  */
     --px-artist-size: 11px; /* artist name font size                  */
+    --bottom:        44px;                     /* distance from the bottom edge     */
+    --left:          44px;                     /* distance from the left edge       */
+    --paused-filter: grayscale(1) opacity(0.55); /* look while paused (grayed out)    */
   }
 
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,8 +33,8 @@
   /* ─── Widget shell ──────────────────────────────────────────────── */
   .px-widget {
     position: fixed;
-    bottom: 44px;
-    left: 44px;
+    bottom: var(--bottom);
+    left: var(--left);
     width: 380px;
     background: var(--px-bg);
     /* triple border: black outer → accent → black inner */
@@ -230,7 +233,7 @@
   /* ─── Paused / idle (classes set by the script) ─────────────────────── */
   .px-widget.is-paused .px-eq-bar { animation-play-state: paused; }
   .px-widget.is-idle   .px-eq { visibility: hidden; }
-  .px-widget.is-paused { filter: grayscale(1) opacity(0.55); }   /* grayed out while paused: tweak the amount here */
+  .px-widget.is-paused { filter: var(--paused-filter); }   /* grayed out while paused: --paused-filter in :root sets the look */
 </style>
 </head>
 <body>

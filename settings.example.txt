@@ -29,3 +29,19 @@ poll_interval=2000
 # requests; a mid-track skip or pause then takes up to this long to show.
 # See "Rate limits and the request quota" in the README.
 poll_interval_max=8000
+
+# ── Looks (optional) ─────────────────────────────────────────────────────
+# Any --name=value line sets one of the widget's colour, size or position
+# variables (the :root block at the top of each widget file lists them) and
+# lives here, so it survives updates. Put a widget's name in front to change
+# that widget only. Remove the # in front of a line to use it.
+#--title-size=40px
+#--bottom=60px
+#zune.--accent-rgb=0, 200, 255
+#spotify.--green=#ff4500
+
+# ── Updates ──────────────────────────────────────────────────────────────
+# When a widget loads it checks for a newer release and runs that instead,
+# keeping this file and your colours. off = always run the files as they are.
+auto_update=on
+# update_url=https://masstarvt.github.io/Spotify-Widget/   # only for a fork

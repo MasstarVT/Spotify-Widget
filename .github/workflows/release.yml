@@ -1,8 +1,11 @@
-# Every push to main becomes a GitHub release with Widget.zip attached.
+# Every push to main becomes a GitHub release with Widget.zip attached, and
+# the same files are published to GitHub Pages so widgets that are already
+# installed can update themselves (see "Updating" in the README).
 #
 # Widget.zip is `git archive` of the commit: the tracked files, minus anything
-# marked export-ignore in .gitattributes (this .github folder). Releases are
-# numbered V1, V2, V3, ... continuing from the highest existing V<n> tag.
+# marked export-ignore in .gitattributes (this .github folder), with the new
+# tag stamped into now-playing-source.js (export-subst). Releases are numbered
+# V1, V2, V3, ... continuing from the highest existing V<n> tag.
 name: Release
 
 on:
@@ -12,7 +15,9 @@ on:
       - '.github/**'      # workflow-only changes do not change the zip
 
 permissions:
-  contents: write
+  contents: write        # tags and releases
+  pages: write           # GitHub Pages deployment
+  id-token: write        # required by deploy-pages
 
 concurrency:
   group: release         # one release at a time, so two quick pushes get distinct tags
@@ -21,14 +26,13 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # full history and tags, for the notes and the tag check
-
-      - name: Build Widget.zip
-        # CRLF text files, like a zip built on Windows (.sh/.py stay LF via .gitattributes)
-        run: git -c core.autocrlf=true archive --format=zip -o Widget.zip HEAD
 
       - name: Pick a tag
         id: tag
@@ -40,16 +44,37 @@ jobs:
           echo "tag=V$n" >> "$GITHUB_OUTPUT"
 
       - name: Write release notes
+        # Before the new tag exists, so "since the previous release" is right.
         run: |
           prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
           if [ -n "$prev" ]; then range="$prev..HEAD"; else range="-1"; fi
           {
             echo "Download **Widget.zip** below, unzip it, and read the README for setup."
+            echo "Widgets that are already installed pick this version up on their next start;"
+            echo "run update-widget.bat (Windows) or update-widget.sh to refresh the files in your folder."
             echo
             echo "## Changes"
             echo
             git log --reverse --format='- **%s**%n%w(0,2,2)%b' $range | grep -v '^ *Co-Authored-By:'
           } > notes.md
+
+      - name: Tag the commit
+        # git archive below stamps WIDGET_VERSION from the nearest tag.
+        run: |
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+      - name: Build Widget.zip and the site
+        # CRLF text files, like a zip built on Windows (.sh/.py stay LF via .gitattributes).
+        # The site is the same export plus the zip and version.json, which the widgets
+        # and the update helpers read.
+        run: |
+          git -c core.autocrlf=true archive --format=zip -o Widget.zip HEAD
+          mkdir -p build
+          git -c core.autocrlf=true archive --format=tar HEAD | tar -x -C build
+          cp Widget.zip build/Widget.zip
+          echo "{\"version\":\"${{ steps.tag.outputs.tag }}\"}" > build/version.json
+          grep -m1 'WIDGET_VERSION =' build/now-playing-source.js
 
       - name: Create release
         env:
@@ -59,3 +84,15 @@ jobs:
             --title "Release ${{ steps.tag.outputs.tag }}" \
             --notes-file notes.md \
             --target "$GITHUB_SHA"
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+      - name: Publish to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+        # Fails until Pages is switched on (repo Settings > Pages > Source: GitHub Actions),
+        # which needs a public repo on the free plan. The release above is done by then.
+        continue-on-error: true
