@@ -2,17 +2,20 @@
 # and fill in your Spotify details. Without a settings.txt the widget
 # behaves exactly as before, reading Snip/Snip.txt.
 #
-# Lines starting with # are comments, and so is " # ..." after a value.
+# Lines starting with # are comments, and so is " # ..." after a value
+# (except on --name=value lines, where # is part of colours). Names are not
+# case-sensitive. Every setting the widget has is in this file; a line
+# starting with # shows its default, remove the # to change it.
 
-# How the widget looks (not case-sensitive). One of:
-#   zune, spotify, apple-music, ipod, xbox, basic, minimal-rect,
-#   minimal-square, candy, pixel, space
+# ── Look ─────────────────────────────────────────────────────────────────
+# One of: zune, spotify, apple-music, ipod, xbox, basic, minimal-rect,
+#         minimal-square, candy, pixel, space
 # OBS shows the new look when the browser source next loads (right-click
 # it > Refresh). For one scene with a different look, add ?theme=candy to
 # the page address of that browser source (URL mode, file:///...).
 theme=zune
 
-# Where track info comes from (not case-sensitive):
+# ── Where track info comes from ──────────────────────────────────────────
 #   auto    = use the Spotify API if the credentials below work,
 #             otherwise fall back to Snip files
 #   spotify = Spotify API only
@@ -39,18 +42,127 @@ poll_interval=2000
 # See "Rate limits and the request quota" in the README.
 poll_interval_max=8000
 
-# ── Colours, sizes, position (optional) ──────────────────────────────────
-# Any --name=value line sets one of the widget's colour, size or position
-# variables (the blocks at the top of widget-now-playing.html list them for
-# each look) and lives here, so it survives updates. Put a look's name in
-# front to change that look only. Remove the # in front of a line to use it.
-#--title-size=40px
-#--bottom=60px
-#zune.--accent-rgb=0, 200, 255
-#spotify.--green=#ff4500
-
 # ── Updates ──────────────────────────────────────────────────────────────
 # When the widget loads it checks for a newer release and runs that instead,
 # keeping this file and your colours. off = always run the files as they are.
 auto_update=on
-# update_url=https://masstarvt.github.io/Spotify-Widget/   # only for a fork
+# Where releases are read from. Only for a fork; https, or http on this
+# computer (127.0.0.1 / localhost).
+#update_url=https://masstarvt.github.io/Spotify-Widget/
+
+# ── Colours, sizes, position ─────────────────────────────────────────────
+# A --name=value line sets one of the widget's variables and lives here,
+# so it survives updates. On its own it applies to every look; with a
+# look's name in front (zune.--accent-rgb=...) to that look only. A value
+# here wins over the blocks at the top of widget-now-playing.html.
+# No " # comment" after these values: a colour like #1DB954 needs its #.
+#
+# Every look has these. Position is from the bottom-left corner; the
+# defaults are 44px, except zune 52px and spotify 48px.
+#--bottom=44px
+#--left=44px
+# Font sizes. Each look has its own defaults (title / artist): zune 38px /
+# 15px, spotify 15px / 12px, apple-music 15px / 12px, ipod 11px / 9px,
+# xbox 18px / 13px, basic 14px / 11px, minimal-rect 15px / 12px,
+# minimal-square 20px / 15px, candy 17px / 13px, pixel 14px / 11px,
+# space 13px / 11.5px.
+#--title-size=15px
+#--artist-size=12px
+# How the widget looks while playback is paused: a CSS filter. Examples:
+# none (unchanged), opacity(0) (hidden), blur(2px) opacity(0.6).
+#--paused-filter=grayscale(1) opacity(0.55)
+# How it looks while nothing is playing ("Nothing playing"). Same values as
+# above; the default is the paused look. opacity(0) hides it until a track
+# starts.
+#--idle-filter=grayscale(1) opacity(0.55)
+
+# zune: accent bar, large title, dark panel. The -rgb values are plain
+# R, G, B numbers, so the glows can be made from them.
+# Main accent (bar, its glow, the rule, the title glow):
+#zune.--accent-rgb=255, 69, 0
+# Bottom of the accent bar gradient and the album art background:
+#zune.--accent-2=#E60073
+# "now playing" label:
+#zune.--label-rgb=255, 106, 51
+# Track title:
+#zune.--title-rgb=255, 255, 255
+# Artist name:
+#zune.--artist-color=rgba(255, 255, 255, 0.85)
+# Width of the scrolling title area:
+#zune.--scroll-width=420px
+
+# spotify: card with equalizer bars.
+# The equalizer bars:
+#spotify.--green=#1DB954
+# Card and art placeholder backgrounds:
+#spotify.--bg-card=#181818
+#spotify.--bg-art=#282828
+# Track title, "now playing" label, artist name:
+#spotify.--text-primary=#FFFFFF
+#spotify.--text-label=rgba(255,255,255,0.55)
+#spotify.--text-artist=rgba(255,255,255,0.65)
+
+# apple-music: card tinted from the album art. The artist colour is the
+# fallback used when a track has no artwork.
+#apple-music.--title-color=#ffffff
+#apple-music.--artist-color=rgba(255,255,255,0.5)
+
+# ipod: classic iPod screen.
+#ipod.--title-color=#ffffff
+#ipod.--artist-color=rgba(255,255,255,0.48)
+
+# xbox: green glow, typewriter label, drifting mist.
+# Card background and border:
+#xbox.--mc-bg=#040a04
+#xbox.--mc-border=rgba(93, 255, 120, 0.55)
+# The glow (equalizer bars):
+#xbox.--mc-glow=#5dff78
+# Track title, artist name, "now playing" label:
+#xbox.--mc-text=#cff0a4
+#xbox.--mc-artist=#6e9e50
+#xbox.--mc-label=#8ec866
+
+# basic: plain dark card.
+#basic.--title-color=#ffffff
+#basic.--artist-color=rgba(255,255,255,0.45)
+
+# minimal-rect: art and text, no background.
+#minimal-rect.--title-color=#ffffff
+#minimal-rect.--artist-color=rgba(255,255,255,0.6)
+
+# minimal-square: large square art with centered text.
+#minimal-square.--title-color=#ffffff
+#minimal-square.--artist-color=rgba(255,255,255,0.6)
+
+# candy: cycling rainbow border and bubbly fonts.
+# Card background:
+#candy.--candy-bg=#130018
+# The three colours the border cycles through (also equalizer bars):
+#candy.--candy-pink=#ff3d8a
+#candy.--candy-purple=#c47bff
+#candy.--candy-mint=#3dffcc
+# One more equalizer bar:
+#candy.--candy-yellow=#ffd93d
+# Track title, artist name, "now playing" label:
+#candy.--candy-text=#ffe8f8
+#candy.--candy-artist=#c8a0e8
+#candy.--candy-label=#ff85c2
+
+# pixel: 8-bit look with scanlines.
+# Border, equalizer bars, cursor and label:
+#pixel.--px-accent=#ff2d55
+# Widget background, track title, artist name:
+#pixel.--px-bg=#0d0d0f
+#pixel.--px-text=#ffffff
+#pixel.--px-muted=#555566
+
+# space: starfield, orbit ring and scanner line.
+# Card background and border:
+#space.--sp-bg=#030810
+#space.--sp-border=rgba(0, 212, 255, 0.38)
+# The glow (bars, corners, ring, signal dot):
+#space.--sp-glow=#00d4ff
+# Track title, artist name, "signal lock" label:
+#space.--sp-text=#e8f4ff
+#space.--sp-artist=#6aabcc
+#space.--sp-label=#00d4ff

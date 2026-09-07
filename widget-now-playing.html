@@ -71,8 +71,7 @@
   /* ─── xbox: green glow, typewriter label, drifting mist ───────────── */
   [data-theme="xbox"] {
     --mc-bg:         #040a04;                    /* card background                   */
-    --mc-glow:       #5dff78;                    /* glow colour (bars, corners)       */
-    --mc-glow-dim:   rgba(93, 255, 120, 0.18);
+    --mc-glow:       #5dff78;                    /* glow colour (the equalizer bars)  */
     --mc-text:       #cff0a4;                    /* track title                       */
     --mc-artist:     #6e9e50;                    /* artist name                       */
     --mc-label:      #8ec866;                    /* "now playing" label               */
@@ -151,11 +150,9 @@
   [data-theme="space"] {
     --sp-bg:         #030810;                    /* card background                   */
     --sp-glow:       #00d4ff;                    /* glow colour (bars, corners, ring) */
-    --sp-glow-dim:   rgba(0, 212, 255, 0.14);
     --sp-text:       #e8f4ff;                    /* track title                       */
     --sp-artist:     #6aabcc;                    /* artist name                       */
     --sp-label:      #00d4ff;                    /* "signal lock" label               */
-    --sp-gold:       #ffc947;                    /* the golden stars                  */
     --sp-border:     rgba(0, 212, 255, 0.38);    /* card border                       */
     --title-size:    13px;                       /* track title font size             */
     --artist-size:   11.5px;                     /* artist name font size             */
@@ -195,6 +192,7 @@
     transition: filter 0.5s ease;
   }
   .np-root.is-paused { filter: var(--paused-filter); }   /* grayed out while paused */
+  .np-root.is-idle   { filter: var(--idle-filter, var(--paused-filter)); }   /* "Nothing playing": the paused look unless --idle-filter is set (opacity(0) hides it) */
 
   /* ═══ zune ═══════════════════════════════════════════════════════════ */
   .zune-widget {
