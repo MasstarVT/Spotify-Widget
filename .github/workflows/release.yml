@@ -27,7 +27,8 @@ jobs:
           fetch-depth: 0   # full history and tags, for the notes and the tag check
 
       - name: Build Widget.zip
-        run: git archive --format=zip -o Widget.zip HEAD
+        # CRLF text files, like a zip built on Windows (.sh/.py stay LF via .gitattributes)
+        run: git -c core.autocrlf=true archive --format=zip -o Widget.zip HEAD
 
       - name: Pick a tag
         id: tag
